@@ -10,6 +10,7 @@
 #define P 67
 
 struct Rmq{
+   Rmq() = default;
    template<typename It, typename Lt=std::less<typename std::iterator_traits<It>::value_type>>
    Rmq(It a, int n, Lt const &lt={}){
       if(n <= 0) return;
@@ -37,12 +38,12 @@ struct Rmq{
       }
       for(int i=1; i<=lg[n2]; ++i){
          for(int j=0; j+(1<<i)<=n2; ++j){
-            int k = st[(i-1)*n2+j], l = st[(i-1)*n2+j+(1<<i-1)];
+            int k = st[(i-1)*n2+j], l = st[(i-1)*n2+j+(1<<(i-1))];
             st[i*n2+j] = lt(a[l], a[k])? l: k;
          }
       }
    }
-   std::array<int, 4> query(int l, int r){
+   std::array<int, 4> query(int l, int r) const{
       int l1 = l>>LB, l2 = l&(1<<LB)-1, r1 = r>>LB;
       if(l1 == r1){
          u64 mask = b[r] & ~((1ull<<l2)-1);
@@ -50,14 +51,14 @@ struct Rmq{
          int k = l1<<LB | LG_LOWBIT[bit%P];
          return {k, k, k, k};
       }
-      u64 mask = b[(l1+1<<LB)-1] & ~((1ull<<l2)-1);
+      u64 mask = b[((l1+1)<<LB)-1] & ~((1ull<<l2)-1);
       u64 bit = mask & ~mask+1;
       int k1 = l1<<LB | LG_LOWBIT[bit%P];
       int k4 = r1<<LB | LG_LOWBIT[(b[r]&~b[r]+1)%P];
       if(l1+1 == r1){
          return {k1, k4, k4, k4};
       }
-      int m = lg[r1-l1-1], n2 = (b.size()-1>>LB)+1;
+      int m = lg[r1-l1-1], n2 = ((b.size()-1)>>LB)+1;
       int k2 = st[m*n2+l1+1];
       int k3 = st[m*n2+r1-(1<<m)];
       return {k1, k2, k3, k4};
