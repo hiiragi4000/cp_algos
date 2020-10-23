@@ -14,9 +14,6 @@
 #define I64 long long
 #define U64 unsigned long long
 
-#define LB 6
-#define P 67
-
 struct RangeMinimum{
    RangeMinimum() = default;
    template<typename It, typename Lt=std::less<typename std::iterator_traits<It>::value_type>>
@@ -72,6 +69,7 @@ struct RangeMinimum{
       return {k1, k2, k3, k4};
    }
 private:
+   static constexpr int LB = 6, P = 67;
    static constexpr std::array<I8, P> lg_lowbit_build(){
       std::array<I8, P> res{0};
       int p = 1;
@@ -81,17 +79,58 @@ private:
       }
       return res;
    }
+   // LG_LOWBIT[2^n mod 67] = n for n in [0, 65]
    static std::array<I8, P> LG_LOWBIT;
    std::vector<U64> b;
    std::vector<I8> lg;
    std::vector<int> st;
 };
+inline std::array<I8, RangeMinimum::P> RangeMinimum::LG_LOWBIT = RangeMinimum::lg_lowbit_build();
 
-// LG_LOWBIT[2^n mod P] = n for n in [0, P-1)
-inline std::array<I8, P> RangeMinimum::LG_LOWBIT = RangeMinimum::lg_lowbit_build();
-
-#undef P
-#undef LB
+template<typename T, typename MonT, typename CompT, typename ActT>
+struct VlaSegMonAct{
+   VlaSegMonAct() = default;
+   VlaSegMonAct(std::vector<T> a0, MonT const &id, CompT const &comp, ActT const &act): id(id), op(comp), act(act), a(move(a0)), tag(a.size(), id){}
+   void seg_act(int l, int r, MonT const &f){
+      seg_act_impl(l, r, f, 0, (int)a.size()-1);
+   }
+   T operator[](int i) const{
+      return bracket_impl(i, 0, (int)a.size()-1);
+   }
+private:
+   MonT id;
+   CompT op;
+   ActT act;
+   std::vector<T> a;
+   std::vector<MonT> tag;
+   void seg_act_impl(int l0, int r0, MonT const &f, int l, int r){
+      if(r<l0 || r0<l) return;
+      int m = l+(r-l)/2;
+      if(l0<=l && r<=r0){
+         tag[m] = op(f, tag[m]);
+         return;
+      }
+      a[m] = act(tag[m], a[m]);
+      if(l0<=m && m<=r0){
+         a[m] = act(f, a[m]);
+      }
+      if(l <= m-1){
+         int lm = l+(m-l-1)/2;
+         tag[lm] = op(tag[m], tag[lm]);
+         seg_act_impl(l0, r0, f, l, m-1);
+      }
+      if(m+1 <= r){
+         int rm = (m+1)+(r-m-1)/2;
+         tag[rm] = op(tag[m], tag[rm]);
+         seg_act_impl(l0, r0, f, m+1, r);
+      }
+      tag[m] = id;
+   }
+   T bracket_impl(int i0, int l, int r) const{
+      int m = l+(r-l)/2;
+      return act(tag[m], i0<m? bracket_impl(i0, l, m-1): i0==m? a[m]: bracket_impl(i0, m+1, r));
+   }
+};
 
 struct LowestCommonAncestor{
    LowestCommonAncestor() = default;
@@ -121,6 +160,52 @@ private:
          dfs(g, v, u, d+1, n_step);
          dep[n_step] = d;
          vis[n_step++] = u;
+      }
+   }
+};
+
+template<typename GrpT, typename CompT, typename InvT>
+struct TreePathVertexComp{
+   TreePathVertexComp() = default;
+   template<typename It>
+   TreePathVertexComp(std::vector<int> const *g, int n, It x, GrpT const &e, CompT const &comp={}, InvT const &inv={}): op(comp), inv(inv), lca(g, n), pos(n+1u), pa(n), sz(n, 1){
+      // assert(n >= 1);
+      using namespace std::placeholders;
+      tr.reserve(n);
+      pa[0] = n; pos[n] = n;
+      std::vector<GrpT> lp(n+1u, e), rp(n+1u, e);
+      dfs(g, x, 0, lp.data(), rp.data());
+      auto rev_op = bind(op, _2, _1);
+      left = {move(lp), e, rev_op, rev_op};
+      right = {move(rp), e, op, op};
+   }
+   void set_vertex(int u, GrpT const &g){
+      auto a = op(op(inv(left[pos[u]]), g), left[pos[pa[u]]]);
+      left.seg_act(pos[u], pos[u]+sz[u]-1, a);
+      auto b = op(op(right[pos[pa[u]]], g), inv(right[pos[u]]));
+      right.seg_act(pos[u], pos[u]+sz[u]-1, b);
+   }
+   GrpT query(int u, int v) const{
+      int a = lca.query(u, v);
+      return op(op(op(left[pos[u]], inv(left[pos[pa[a]]])), inv(right[pos[a]])), right[pos[v]]);
+   }
+private:
+   using RevCompT = std::function<GrpT(GrpT const&, GrpT const&)>;
+   CompT op;
+   InvT inv;
+   LowestCommonAncestor lca;
+   std::vector<int> tr, pos, pa, sz;
+   VlaSegMonAct<GrpT, GrpT, RevCompT, RevCompT> left;
+   VlaSegMonAct<GrpT, GrpT, CompT, CompT> right;
+   template<typename It> void dfs(std::vector<int> const *g, It x, int u, GrpT *lp, GrpT *rp){
+      pos[u] = tr.size();
+      lp[tr.size()] = op(x[u], lp[pos[pa[u]]]);
+      rp[tr.size()] = op(rp[pos[pa[u]]], x[u]);
+      tr.push_back(u);
+      for(int v: g[u]) if(v != pa[u]){
+         pa[v] = u;
+         dfs(g, x, v, lp, rp);
+         sz[u] += sz[v];
       }
    }
 };
@@ -254,10 +339,11 @@ struct RangeInversion{
          if(r2 == bsize-1) return b[k1].sinv[r1];
          return b[k1].pinv[r2] + b[k1].sinv[r1] + n_inv(b[k1].sp[r1-1].data(), r1, b[k1].ss[r2+1].data(), bsize-r2-1) - macro_inv[k1][k1];
       }
-      if(k1+1 == k2){
-         return b[k1].sinv[r1] + b[k2].pinv[r2] + n_inv(b[k1].ss[r1].data(), bsize-r1, b[k2].sp[r2].data(), r2+1);
+      I64 res = b[k1].sinv[r1] + b[k2].pinv[r2] + n_inv(b[k1].ss[r1].data(), bsize-r1, b[k2].sp[r2].data(), r2+1);
+      if(k1+1 < k2){
+         res += macro_inv[k1+1][k2-1] + dp[l][k2-1] + dp[r][k1+1];
       }
-      return b[k1].sinv[r1] + b[k2].pinv[r2] + n_inv(b[k1].ss[r1].data(), bsize-r1, b[k2].sp[r2].data(), r2+1) + macro_inv[k1+1][k2-1] + dp[l][k2-1] + dp[r][k1+1];
+      return res;
    }
 private:
    struct Bucket{
