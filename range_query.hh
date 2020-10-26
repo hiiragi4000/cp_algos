@@ -210,6 +210,46 @@ private:
    }
 };
 
+template<typename AbT, typename CompT=std::plus<AbT>, typename InvT=std::negate<AbT>>
+struct TreePathVertexSum{
+   TreePathVertexSum() = default;
+   template<typename It>
+   TreePathVertexSum(std::vector<int> const *g, int n, It x, AbT const &e=0, CompT const &comp={}, InvT const &inv={}): op(comp), inv(inv), lca(g, n), pos(n+1u), pa(n), sz(n, 1){
+      // assert(n >= 1);
+      tr.reserve(n);
+      pa[0] = n; pos[n] = n;
+      std::vector<AbT> s(n+1u, e);
+      dfs(g, x, 0, s.data());
+      sum = {move(s), e, op, op};
+   }
+   void add_vertex(int u, AbT const &a){
+      sum.seg_act(pos[u], pos[u]+sz[u]-1, a);
+   }
+   void set_vertex(int u, AbT const &a){
+      add_vertex(op(op(inv(sum[pos[u]]), a), sum[pos[pa[u]]]));
+   }
+   AbT query(int u, int v) const{
+      int a = lca.query(u, v);
+      return op(op(op(sum[pos[u]], inv(sum[pos[pa[a]]])), inv(sum[pos[a]])), sum[pos[v]]);
+   }
+private:
+   CompT op;
+   InvT inv;
+   LowestCommonAncestor lca;
+   std::vector<int> tr, pos, pa, sz;
+   VlaSegMonAct<AbT, AbT, CompT, CompT> sum;
+   template<typename It> void dfs(std::vector<int> const *g, It x, int u, AbT *s){
+      pos[u] = tr.size();
+      s[tr.size()] = op(x[u], s[pos[pa[u]]]);
+      tr.push_back(u);
+      for(int v: g[u]) if(v != pa[u]){
+         pa[v] = u;
+         dfs(g, x, v, s);
+         sz[u] += sz[v];
+      }
+   }
+};
+
 struct QsortTree{
 public:
    QsortTree() = default;

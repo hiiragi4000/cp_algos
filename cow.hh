@@ -6,15 +6,15 @@
 #include<vector>
 
 template<typename T>
-struct CowVla{
-   CowVla() = default;
-   explicit CowVla(int n, T const &x = T()): n(n){
+struct VlaCow{
+   VlaCow() = default;
+   explicit VlaCow(int n, T const &x = T()): n(n){
       auto f = [&x](int) -> decltype(auto){
          return x;
       };
       r.push_back(cur = ver0_build(f, 0, n-1));
    }
-   template<typename It> CowVla(It b, int n): n(n){
+   template<typename It> VlaCow(It b, int n): n(n){
       auto f = [&b](int i) -> decltype(auto){
          return b[i];
       };

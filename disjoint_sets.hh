@@ -26,13 +26,13 @@ private:
    std::vector<int> p, s;
 };
 
-struct CowDjs: private CowVla<std::pair<int, int>>{
-   using Base = CowVla<std::pair<int, int>>;
+struct DjsCow: private VlaCow<std::pair<int, int>>{
+   using Base = VlaCow<std::pair<int, int>>;
    using Base::size;
    using Base::load;
    using Base::save;
-   CowDjs() = default;
-   explicit CowDjs(int n): Base(n, {-1, 0}){}
+   DjsCow() = default;
+   explicit DjsCow(int n): Base(n, {-1, 0}){}
    int find(int u) const noexcept{
       int r = u;
       for(int p; (p=std::get<PARENT>((*this)[r]))!=-1; ){
