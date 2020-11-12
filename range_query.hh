@@ -14,6 +14,26 @@
 #define I64 long long
 #define U64 unsigned long long
 
+template<typename T, typename CompT=std::plus<T>> struct Fenwick{
+   Fenwick() = default;
+   explicit Fenwick(int n, T const &e={}, CompT const &op={}): b(n+1u, e), op(op){}
+   T sum(int i) const noexcept{
+      T res = b[0];
+      for(size_t j=i+1; j; j-=j&~j+1){
+         res = op(res, b[j]);
+      }
+      return res;
+   }
+   void add(int i, T const &dx) noexcept{
+      for(size_t j=i+1; j<b.size(); j+=j&~j+1){
+         b[j] = op(b[j], dx);
+      }
+   }
+private:
+   std::vector<T> b;
+   CompT op;
+};
+
 struct RangeMinimum{
    RangeMinimum() = default;
    template<typename It, typename Lt=std::less<typename std::iterator_traits<It>::value_type>>
