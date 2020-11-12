@@ -4,6 +4,7 @@
 #include"number_theory.hh"
 #include<algorithm>
 #include<complex>
+#include<iterator>
 
 #define I64 long long
 
@@ -113,7 +114,7 @@ private:
          table = {1, {0, 1}, -1, {0, -1}};
       }else if(n >= 8){
          table.resize(n);
-         table[0] = {1, 0};
+         table[0] = 1;
          for(int i=1; i<n/8; ++i){
             table[i] = {std::cos(2*PI*i/n), std::sin(2*PI*i/n)};
          }
@@ -135,6 +136,49 @@ private:
 using Fft = BasicFft<double>;
 using Fftf = BasicFft<float>;
 using Fftl = BasicFft<long double>;
+
+template<typename InputIt1, typename InputIt2, typename OutputIt>
+void convolution_int(int n, InputIt1 b1, InputIt1 e1, InputIt2 b2, InputIt2 e2, OutputIt res){
+   if(n <= 0) return;
+   using ResT = typename std::iterator_traits<OutputIt>::value_type;
+   int n1 = e1-b1, n2 = e2-b2;
+   n1 = std::min(n1, n); n2 = std::min(n2, n);
+   if(n1<=32 || n2<=32){
+      std::vector<ResT> t(n);
+      for(int i=0; i<n1; ++i) for(int j=0; j<n2; ++j){
+         t[(i+j)%n] += static_cast<ResT>(b1[i])*static_cast<ResT>(b2[j]);
+      }
+      std::copy(t.cbegin(), t.cend(), res);
+      return;
+   }
+   int n_fft = n;
+   while((n_fft & -n_fft) != n_fft){
+      n_fft += n_fft & -n_fft;
+   }
+   if(n_fft>n && n<n1+n2-1){
+      n_fft <<= 1;
+   }
+   std::vector<std::complex<double>> x(n_fft);
+   for(int i=0; i<n1; ++i){
+      x[i] = b1[i];
+   }
+   for(int i=0; i<n2; ++i){
+      x[i] += std::complex<double>(0, b2[i]);
+   }
+   if(n_fft > 2*n){
+      for(int i=1; i<n1; ++i){
+         x[n_fft-n+i] = b1[i];
+      }
+   }
+   Fft::transform_in_place(false, x.begin(), n_fft);
+   for(int i=0; i<n_fft; ++i){
+      x[i] *= x[i];
+   }
+   Fft::transform_in_place(true, x.begin(), n_fft);
+   for(int i=0; i<n; ++i){
+      res[i] = static_cast<ResT>(round(x[i].imag()/2));
+   }
+}
 
 #undef I64
 
