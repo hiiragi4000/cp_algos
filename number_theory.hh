@@ -260,73 +260,39 @@ inline int discrete_log(int base, int power, int mod){
    return -1;
 }
 
-struct RingZn{
+template<U32 n> struct RingZn{
    RingZn() = default;
-   constexpr RingZn(int t) noexcept: t(t){}
-   template<typename T> constexpr RingZn(U32 n, T a) noexcept: n(n), a(a<0? (a%(I64)n+n)%n: a%n){}
+   template<typename INT> constexpr RingZn(INT a) noexcept: a((a%=(I64)n)<0? (I64)a+n: a){}
    constexpr U32 mod() const noexcept{
       return n;
    }
-   template<typename T> constexpr explicit operator T() const noexcept{
-      return n? (I64)a: (I64)t;
+   template<typename INT> constexpr explicit operator INT() const noexcept{
+      return a;
    }
    constexpr RingZn operator+() const noexcept{
       return *this;
    }
    constexpr RingZn operator-() const noexcept{
-      return n? RingZn(n, a? n-a: 0): RingZn(-t);
+      return a? n-a: 0;
    }
-   constexpr RingZn &operator+=(RingZn rhs){
-      if(!n){
-         if(!rhs.n){
-            t += rhs.t; return *this;
-         }
-         *this = RingZn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = ((U64)a+rhs.a)%n;
+   constexpr RingZn &operator+=(RingZn rhs) noexcept{
+      a += a<n-rhs.a? rhs.a: n-rhs.a;
       return *this;
    }
-   constexpr RingZn &operator-=(RingZn rhs){
-      if(!n){
-         if(!rhs.n){
-            t -= rhs.t; return *this;
-         }
-         *this = RingZn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = ((U64)a+n-rhs.a)%n;
+   constexpr RingZn &operator-=(RingZn rhs) noexcept{
+      a = a<rhs.a? a+(n-rhs.a): a-rhs.a;
       return *this;
    }
-   constexpr RingZn &operator*=(RingZn rhs){
-      if(!n){
-         if(!rhs.n){
-            t *= rhs.t; return *this;
-         }
-         *this = RingZn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = (U64)a*rhs.a%n;
+   constexpr RingZn &operator*=(RingZn rhs) noexcept{
+      a = (U64)a * rhs.a % n;
       return *this;
    }
-   constexpr RingZn &operator/=(RingZn rhs){
-      if(!n){
-         if(!rhs.n){
-            t *= rhs.t; return *this;
-         }
-         *this = RingZn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = (U64)a*inv_mod(rhs.a, n)%n;
+   constexpr RingZn &operator/=(RingZn rhs) noexcept{
+      a = (U64)a * inv_mod(rhs.a, n) % n;
       return *this;
    }
    constexpr RingZn &operator++() noexcept{
-      if(n) a = a==n-1? 0: a+1;
-      else ++t;
+      a = a==n-1? 0: a+1;
       return *this;
    }
    constexpr RingZn operator++(int) noexcept{
@@ -334,12 +300,116 @@ struct RingZn{
       return res;
    }
    constexpr RingZn &operator--() noexcept{
-      if(n) a = a==0? n-1: a-1;
-      else --t;
+      a = a? a-1: n-1;
       return *this;
    }
    constexpr RingZn operator--(int) noexcept{
       RingZn res = *this; --*this;
+      return res;
+   }
+private:
+   U32 a = 0;
+};
+#define DEF_BIOP(op)\
+template<U32 n> constexpr RingZn<n> operator op(RingZn<n> lhs, RingZn<n> rhs) noexcept{\
+   return lhs op##= rhs;\
+}
+DEF_BIOP(+)
+DEF_BIOP(-)
+DEF_BIOP(*)
+DEF_BIOP(/)
+#undef DEF_BIOP
+template<U32 n> constexpr bool operator==(RingZn<n> lhs, RingZn<n> rhs) noexcept{
+   return (U32)lhs == (U32)rhs;
+}
+template<U32 n> constexpr bool operator!=(RingZn<n> lhs, RingZn<n> rhs) noexcept{
+   return !(lhs == rhs);
+}
+
+struct RingZnDyn{
+   RingZnDyn() = default;
+   constexpr RingZnDyn(int t) noexcept: t(t){}
+   template<typename INT> constexpr RingZnDyn(U32 n, INT a) noexcept: n(n), a((a%=(I64)n)<0? a+n: a){}
+   constexpr U32 mod() const noexcept{
+      return n;
+   }
+   template<typename INT> constexpr explicit operator INT() const noexcept{
+      return n? (I64)a: (I64)t;
+   }
+   constexpr RingZnDyn operator+() const noexcept{
+      return *this;
+   }
+   constexpr RingZnDyn operator-() const noexcept{
+      RingZnDyn res = *this;
+      if(n){
+         res.a = a? n-a: 0;
+      }else res.t = -t;
+      return res;
+   }
+   constexpr RingZnDyn &operator+=(RingZnDyn rhs){
+      if(!n){
+         if(!rhs.n){
+            t += rhs.t; return *this;
+         }
+         *this = RingZnDyn(rhs.n, t);
+      }else if(!rhs.n){
+         rhs = RingZnDyn(n, rhs.t);
+      } // else assert(n == rhs.n);
+      a += a<n-rhs.a? rhs.a: n-rhs.a;
+      return *this;
+   }
+   constexpr RingZnDyn &operator-=(RingZnDyn rhs){
+      if(!n){
+         if(!rhs.n){
+            t -= rhs.t; return *this;
+         }
+         *this = RingZnDyn(rhs.n, t);
+      }else if(!rhs.n){
+         rhs = RingZnDyn(n, rhs.t);
+      } // else assert(n == rhs.n);
+      a = a<rhs.a? a+(n-rhs.a): a-rhs.a;
+      return *this;
+   }
+   constexpr RingZnDyn &operator*=(RingZnDyn rhs){
+      if(!n){
+         if(!rhs.n){
+            t *= rhs.t; return *this;
+         }
+         *this = RingZnDyn(rhs.n, t);
+      }else if(!rhs.n){
+         rhs = RingZnDyn(n, rhs.t);
+      } // else assert(n == rhs.n);
+      a = (U64)a * rhs.a % n;
+      return *this;
+   }
+   constexpr RingZnDyn &operator/=(RingZnDyn rhs){
+      if(!n){
+         if(!rhs.n){
+            t /= rhs.t; return *this;
+         }
+         *this = RingZnDyn(rhs.n, t);
+      }else if(!rhs.n){
+         rhs = RingZnDyn(n, rhs.t);
+      } // else assert(n == rhs.n);
+      a = (U64)a * inv_mod(rhs.a, n) % n;
+      return *this;
+   }
+   constexpr RingZnDyn &operator++() noexcept{
+      if(n) a = a==n-1? 0: a+1;
+      else ++t;
+      return *this;
+   }
+   constexpr RingZnDyn operator++(int) noexcept{
+      RingZnDyn res = *this; ++*this;
+      return res;
+   }
+   constexpr RingZnDyn &operator--() noexcept{
+      if(n) a = a==0? n-1: a-1;
+      else --t;
+      return *this;
+   }
+   constexpr RingZnDyn operator--(int) noexcept{
+      RingZnDyn res = *this; --*this;
       return res;
    }
 private:
@@ -351,7 +421,7 @@ private:
 };
 
 #define DEF_BIOP(op)\
-constexpr RingZn operator op(RingZn lhs, RingZn rhs){\
+constexpr RingZnDyn operator op(RingZnDyn lhs, RingZnDyn rhs){\
    return lhs op##= rhs;\
 }
 DEF_BIOP(+)
@@ -360,20 +430,20 @@ DEF_BIOP(*)
 DEF_BIOP(/)
 #undef DEF_BIOP
 
-constexpr bool operator==(RingZn lhs, RingZn rhs) noexcept{
+constexpr bool operator==(RingZnDyn lhs, RingZnDyn rhs) noexcept{
    if(!lhs.mod()){
       if(!rhs.mod()){
          return (int)lhs == (int)rhs;
       }
-      lhs = RingZn(rhs.mod(), (int)lhs);
+      lhs = RingZnDyn(rhs.mod(), (int)lhs);
    }else if(!rhs.mod()){
-      rhs = RingZn(lhs.mod(), (int)rhs);
+      rhs = RingZnDyn(lhs.mod(), (int)rhs);
    }else if(lhs.mod() != rhs.mod()){
       return false;
    }
    return (U32)lhs == (U32)rhs;
 }
-constexpr bool operator!=(RingZn lhs, RingZn rhs) noexcept{
+constexpr bool operator!=(RingZnDyn lhs, RingZnDyn rhs) noexcept{
    return !(lhs == rhs);
 }
 

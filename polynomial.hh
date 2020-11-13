@@ -48,13 +48,13 @@ template<typename NttT> struct PolynomialNtt: private std::vector<int>{
    }
    template<typename T> PolynomialNtt &set_coef(int i, T ci){
       if(i >= (int)size()) resize(i+1);
-      data()[i] = (int)RingZn(mod(), ci);
+      data()[i] = (int)RingZn<mod()>(ci);
       return *this;
    }
    int operator()(int x) const noexcept{
-      RingZn res(mod(), 0);
+      RingZn<mod()> res = 0;
       for(size_t i=size(); i-->0; ){
-         res = x*res + data()[i];
+         res = RingZn<mod()>(x)*res + RingZn<mod()>(data()[i]);
       }
       return (int)res;
    }
