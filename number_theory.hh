@@ -117,7 +117,7 @@ constexpr I64 inv_mod(I64 a, I64 mod){
 constexpr U32 pow_mod(I64 a, I64 n, U32 mod){
    // assert(mod > 0);
    if(mod == 1) return 0;
-   a = (a%mod+mod)%mod;
+   if((a%=mod) < 0) a += mod;
    if(n < 0) a = inv_mod(a, mod);
    U64 res = 1, t = a;
    while(n){
@@ -276,7 +276,7 @@ template<U32 n> struct RingZn{
       return a? n-a: 0;
    }
    constexpr RingZn &operator+=(RingZn rhs) noexcept{
-      a += a<n-rhs.a? rhs.a: n-rhs.a;
+      a = a<n-rhs.a? a+rhs.a: a-(n-rhs.a);
       return *this;
    }
    constexpr RingZn &operator-=(RingZn rhs) noexcept{
@@ -309,22 +309,22 @@ template<U32 n> struct RingZn{
    }
 private:
    U32 a = 0;
-};
 #define DEF_BIOP(op)\
-template<U32 n> constexpr RingZn<n> operator op(RingZn<n> lhs, RingZn<n> rhs) noexcept{\
-   return lhs op##= rhs;\
-}
-DEF_BIOP(+)
-DEF_BIOP(-)
-DEF_BIOP(*)
-DEF_BIOP(/)
+   friend constexpr RingZn operator op(RingZn lhs, RingZn rhs) noexcept{\
+      return lhs op##= rhs;\
+   }
+   DEF_BIOP(+)
+   DEF_BIOP(-)
+   DEF_BIOP(*)
+   DEF_BIOP(/)
 #undef DEF_BIOP
-template<U32 n> constexpr bool operator==(RingZn<n> lhs, RingZn<n> rhs) noexcept{
-   return (U32)lhs == (U32)rhs;
-}
-template<U32 n> constexpr bool operator!=(RingZn<n> lhs, RingZn<n> rhs) noexcept{
-   return !(lhs == rhs);
-}
+   friend constexpr bool operator==(RingZn lhs, RingZn rhs) noexcept{
+      return (U32)lhs == (U32)rhs;
+   }
+   friend constexpr bool operator!=(RingZn lhs, RingZn rhs) noexcept{
+      return !(lhs == rhs);
+   }
+};
 
 struct RingZnDyn{
    RingZnDyn() = default;
