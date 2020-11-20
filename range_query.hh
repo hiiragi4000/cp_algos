@@ -1,6 +1,7 @@
 #ifndef RANGE_QUERY_HH
 #define RANGE_QUERY_HH
 
+#include"util.hh"
 #include<algorithm>
 #include<array>
 #include<functional>
@@ -36,7 +37,7 @@ private:
 
 struct RangeMinimum{
    RangeMinimum() = default;
-   template<typename It, typename Lt=std::less<typename std::iterator_traits<It>::value_type>>
+   template<typename It, typename Lt=std::less<DerefType<It>>>
    RangeMinimum(It a, int n, Lt const &lt={}){
       if(n <= 0) return;
       int n2 = ((n-1)>>LB)+1;
@@ -273,7 +274,7 @@ private:
 struct QsortTree{
 public:
    QsortTree() = default;
-   template<typename It, typename Lt=std::less<typename std::iterator_traits<It>::value_type>>
+   template<typename It, typename Lt=std::less<DerefType<It>>>
    QsortTree(It a, int n, Lt const &lt={}): si(n), val(buf_size(n)), sl(buf_size(n)), pos(4*n){
       iota(si.begin(), si.end(), 0);
       sort(si.begin(), si.end(), [&](int i, int j){
@@ -323,7 +324,7 @@ private:
 
 struct RangeInversion{
    RangeInversion() = default;
-   template<typename It, typename Lt = std::less<typename std::iterator_traits<It>::value_type>>
+   template<typename It, typename Lt = std::less<DerefType<It>>>
    RangeInversion(It first, int n, Lt const &lt={}){
       std::vector<int> si(n);
       iota(si.begin(), si.end(), 0);

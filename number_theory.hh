@@ -3,7 +3,10 @@
 
 #include<array>
 #include<functional>
+#include<limits>
 #include<numeric>
+#include<ostream>
+#include<type_traits>
 #include<unordered_map>
 #include<utility>
 #include<vector>
@@ -82,7 +85,7 @@ inline std::vector<signed char> mu_table_leq(int n){
    // assert(n >= 1);
    std::vector<signed char> mu(n+1u, -2);
    std::vector<int> primes;
-   mu[1] = 1;
+   mu[0] = 0; mu[1] = 1;
    for(I64 i=2; i<=n; ++i){
       if(mu[i] == -2){
          mu[i] = -1;
@@ -109,9 +112,10 @@ constexpr std::array<I64, 2> extgcd(I64 a, I64 b){
 }
 
 constexpr I64 inv_mod(I64 a, I64 mod){
-   // assert(a>0 && mod>0 && std::gcd(a, mod)==1);
-   auto [x, y] = extgcd(a, mod);
-   return (x%=mod)<0? x+mod: x;
+   // assert(mod>1 && std::gcd(mod, a%mod)==1);
+   if((a%=mod) < 0) a += mod;
+   auto [_, x] = extgcd(mod, a);
+   return x<0? x+mod: x;
 }
 
 constexpr U32 pow_mod(I64 a, I64 n, U32 mod){
@@ -175,27 +179,26 @@ constexpr int jacobi_symbol(I64 a, I64 b){
    return b>1? 0: ok? 1: -1;
 }
 
-constexpr int sqrt_modp(int a, int p){
+constexpr I64 sqrt_modp(I64 a, U32 p){
    // assert(primality_test(p));
-   a = ((I64)a%p+p)%p;
-   if(p == 2) return a;
-   if(a == 0) return 0;
+   if((a%=p) < 0) a += p;
+   if(a <= 1) return a;
    if(jacobi_symbol(a, p) == -1) return -1;
    if(p%4 == 3) return pow_mod(a, (p+1ll)/4, p);
    I64 k = 1;
    while(jacobi_symbol(k*k-a, p) == 1) ++k;
    if(k*k%p == a) return k;
-   I64 w = ((k*k-a)%p+p)%p;
-   I64 rc = 1, rx = 0, tc = k, tx = 1;
-   for(I64 i=(p+1ll)/2; i>0; ){
+   U64 w = ((k*k-a)%p+p)%p;
+   U64 rc = 1, rx = 0, tc = k, tx = 1;
+   for(U64 i=(p+1ll)/2; i>0; ){
       if(i%2){
-         I64 rc2 = (rc*tc + rx*tx%p*w)%p;
-         rx = (rc*tx + rx*tc)%p;
+         U64 rc2 = (rc*tc%p + rx*tx%p*w)%p;
+         rx = (rc*tx%p + rx*tc)%p;
          rc = rc2;
       }
       if(i/=2){
-         I64 tc2 = (tc*tc + tx*tx%p*w)%p;
-         tx = 2*tc*tx%p;
+         U64 tc2 = (tc*tc%p + tx*tx%p*w)%p;
+         tx = (tc<p-tc? 2*tc: tc-(p-tc))*tx%p;
          tc = tc2;
       }
    }
@@ -203,10 +206,10 @@ constexpr int sqrt_modp(int a, int p){
    return rc;
 }
 
-constexpr bool primitive_root_modp_check(int r, int p){
+constexpr bool primitive_root_modp_check(U32 r, U32 p){
    // assert(primality_test(p));
    if(r%p == 0) return false;
-   int d = p-1;
+   U32 d = p-1;
    for(I64 q=2; q*q<=d; ++q) if(d%q == 0){
       do d/=q; while(d%q==0);
       if(pow_mod(r, (p-1)/q, p) == 1) return false;
@@ -217,26 +220,26 @@ constexpr bool primitive_root_modp_check(int r, int p){
    return true;
 }
 
-constexpr int primitive_root_modp(int p){
+constexpr U32 primitive_root_modp(U32 p){
    // assert(primality_test(p));
-   for(int i=1; ; ++i){
+   for(U32 i=1; ; ++i){
       if(primitive_root_modp_check(i, p)){
          return i;
       }
    }
 }
 
-inline int discrete_log(int base, int power, int mod){
+inline I64 discrete_log(I64 base, I64 power, U32 mod){
    // assert(mod > 0);
    if((base%=mod) < 0) base += mod;
    if((power%=mod) < 0) power += mod;
    if(mod==1 || power==1) return 0;
-   int s = 1, d = 1, res = 0;
+   U32 s = 1, d = 1, res = 0;
    while(1){
-      s = (I64)base*s%mod;
+      s = (U64)base*s%mod;
       ++res;
       if(s == power) return res;
-      int d2 = std::gcd(s, mod);
+      U32 d2 = std::gcd(s, mod);
       if(d2 == d){
          if(power%d) return -1;
          s /= d; power /= d; mod /= d;
@@ -244,55 +247,58 @@ inline int discrete_log(int base, int power, int mod){
       }
       d = d2;
    }
-   int m = std::ceil(std::sqrt(mod));
-   std::unordered_map<int, int> bs(m);
-   for(int i=0; i<m; ++i){
+   U32 m = std::ceil(std::sqrt(mod));
+   std::unordered_map<U32, U32> bs(m);
+   for(U32 i=0; i<m; ++i){
       bs.emplace(s, i);
-      s = (I64)base*s%mod;
+      s = (U64)base*s%mod;
    }
-   int gs = pow_mod(base, -m, mod);
-   for(int i=0; i<m; ++i){
+   U32 gs = pow_mod(base, -(I64)m, mod);
+   for(U32 i=0; i<m; ++i){
       if(auto it=bs.find(power); it!=bs.end()){
          return res + i*m + it->second;
       }
-      power = (I64)gs*power%mod;
+      power = (U64)gs*power%mod;
    }
    return -1;
 }
 
-template<U32 n> struct RingZn{
-   RingZn() = default;
-   template<typename INT> constexpr RingZn(INT a) noexcept: a((a%=(I64)n)<0? (I64)a+n: a){}
-   constexpr U32 mod() const noexcept{
-      return n;
+template<U32 N> struct RingZn{
+   using Base = std::conditional_t<(N<=(U32)std::numeric_limits<int>::max()), int, U32>;
+   static constexpr U32 mod() noexcept{
+      return N;
    }
-   template<typename INT> constexpr explicit operator INT() const noexcept{
+   RingZn() = default;
+   template<typename INT, typename = std::enable_if_t<std::is_integral_v<INT>>>
+   constexpr RingZn(INT a) noexcept: a((a%=(I64)N)<0? (I64)a+N: a){}
+   template<typename INT, typename = std::enable_if_t<std::is_arithmetic_v<INT>>>
+   constexpr explicit operator INT() const noexcept{
       return a;
    }
    constexpr RingZn operator+() const noexcept{
       return *this;
    }
    constexpr RingZn operator-() const noexcept{
-      return a? n-a: 0;
+      return a? (Base)N-a: 0;
    }
    constexpr RingZn &operator+=(RingZn rhs) noexcept{
-      a = a<n-rhs.a? a+rhs.a: a-(n-rhs.a);
+      a = a<(Base)N-rhs.a? a+rhs.a: a-((Base)N-rhs.a);
       return *this;
    }
    constexpr RingZn &operator-=(RingZn rhs) noexcept{
-      a = a<rhs.a? a+(n-rhs.a): a-rhs.a;
+      a = a<rhs.a? a+((Base)N-rhs.a): a-rhs.a;
       return *this;
    }
    constexpr RingZn &operator*=(RingZn rhs) noexcept{
-      a = (U64)a * rhs.a % n;
+      a = (U64)a * rhs.a % N;
       return *this;
    }
    constexpr RingZn &operator/=(RingZn rhs) noexcept{
-      a = (U64)a * inv_mod(rhs.a, n) % n;
+      a = (U64)a * inv_mod(rhs.a, N) % N;
       return *this;
    }
    constexpr RingZn &operator++() noexcept{
-      a = a==n-1? 0: a+1;
+      a = a==(Base)N-1? 0: a+1;
       return *this;
    }
    constexpr RingZn operator++(int) noexcept{
@@ -300,15 +306,13 @@ template<U32 n> struct RingZn{
       return res;
    }
    constexpr RingZn &operator--() noexcept{
-      a = a? a-1: n-1;
+      a = a? a-1: (Base)N-1;
       return *this;
    }
    constexpr RingZn operator--(int) noexcept{
       RingZn res = *this; --*this;
       return res;
    }
-private:
-   U32 a = 0;
 #define DEF_BIOP(op)\
    friend constexpr RingZn operator op(RingZn lhs, RingZn rhs) noexcept{\
       return lhs op##= rhs;\
@@ -324,128 +328,18 @@ private:
    friend constexpr bool operator!=(RingZn lhs, RingZn rhs) noexcept{
       return !(lhs == rhs);
    }
-};
-
-struct RingZnDyn{
-   RingZnDyn() = default;
-   constexpr RingZnDyn(int t) noexcept: t(t){}
-   template<typename INT> constexpr RingZnDyn(U32 n, INT a) noexcept: n(n), a((a%=(I64)n)<0? a+n: a){}
-   constexpr U32 mod() const noexcept{
-      return n;
-   }
-   template<typename INT> constexpr explicit operator INT() const noexcept{
-      return n? (I64)a: (I64)t;
-   }
-   constexpr RingZnDyn operator+() const noexcept{
-      return *this;
-   }
-   constexpr RingZnDyn operator-() const noexcept{
-      RingZnDyn res = *this;
-      if(n){
-         res.a = a? n-a: 0;
-      }else res.t = -t;
-      return res;
-   }
-   constexpr RingZnDyn &operator+=(RingZnDyn rhs){
-      if(!n){
-         if(!rhs.n){
-            t += rhs.t; return *this;
-         }
-         *this = RingZnDyn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZnDyn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a += a<n-rhs.a? rhs.a: n-rhs.a;
-      return *this;
-   }
-   constexpr RingZnDyn &operator-=(RingZnDyn rhs){
-      if(!n){
-         if(!rhs.n){
-            t -= rhs.t; return *this;
-         }
-         *this = RingZnDyn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZnDyn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = a<rhs.a? a+(n-rhs.a): a-rhs.a;
-      return *this;
-   }
-   constexpr RingZnDyn &operator*=(RingZnDyn rhs){
-      if(!n){
-         if(!rhs.n){
-            t *= rhs.t; return *this;
-         }
-         *this = RingZnDyn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZnDyn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = (U64)a * rhs.a % n;
-      return *this;
-   }
-   constexpr RingZnDyn &operator/=(RingZnDyn rhs){
-      if(!n){
-         if(!rhs.n){
-            t /= rhs.t; return *this;
-         }
-         *this = RingZnDyn(rhs.n, t);
-      }else if(!rhs.n){
-         rhs = RingZnDyn(n, rhs.t);
-      } // else assert(n == rhs.n);
-      a = (U64)a * inv_mod(rhs.a, n) % n;
-      return *this;
-   }
-   constexpr RingZnDyn &operator++() noexcept{
-      if(n) a = a==n-1? 0: a+1;
-      else ++t;
-      return *this;
-   }
-   constexpr RingZnDyn operator++(int) noexcept{
-      RingZnDyn res = *this; ++*this;
-      return res;
-   }
-   constexpr RingZnDyn &operator--() noexcept{
-      if(n) a = a==0? n-1: a-1;
-      else --t;
-      return *this;
-   }
-   constexpr RingZnDyn operator--(int) noexcept{
-      RingZnDyn res = *this; --*this;
-      return res;
-   }
 private:
-   U32 n = 0;
-   union{
-      int t = 0;
-      U32 a;
-   };
+   Base a = 0;
 };
+template<U32 N> RingZn<N> pow(RingZn<N> a, I64 b){
+   return pow_mod((I64)a, b, N);
+}
+template<U32 N> std::ostream &operator<<(std::ostream &os, RingZn<N> a){
+   return os << (U32)a;
+}
 
-#define DEF_BIOP(op)\
-constexpr RingZnDyn operator op(RingZnDyn lhs, RingZnDyn rhs){\
-   return lhs op##= rhs;\
-}
-DEF_BIOP(+)
-DEF_BIOP(-)
-DEF_BIOP(*)
-DEF_BIOP(/)
-#undef DEF_BIOP
-
-constexpr bool operator==(RingZnDyn lhs, RingZnDyn rhs) noexcept{
-   if(!lhs.mod()){
-      if(!rhs.mod()){
-         return (int)lhs == (int)rhs;
-      }
-      lhs = RingZnDyn(rhs.mod(), (int)lhs);
-   }else if(!rhs.mod()){
-      rhs = RingZnDyn(lhs.mod(), (int)rhs);
-   }else if(lhs.mod() != rhs.mod()){
-      return false;
-   }
-   return (U32)lhs == (U32)rhs;
-}
-constexpr bool operator!=(RingZnDyn lhs, RingZnDyn rhs) noexcept{
-   return !(lhs == rhs);
-}
+template<typename> struct RingZnMod: std::integral_constant<U32, 0>{};
+template<U32 N> struct RingZnMod<RingZn<N>>: std::integral_constant<U32, N>{};
 
 #undef U64
 #undef I64
