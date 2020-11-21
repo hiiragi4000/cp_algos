@@ -152,7 +152,7 @@ constexpr bool primality_test(U32 n) noexcept{
    if(n <= 1) return false;
    if(n == 2) return true;
    if(n%2 == 0) return false;
-   return miller_rabin(n, 2) && (n < 2047 || miller_rabin(n, 7) && miller_rabin(n, 61));
+   return miller_rabin(n, 2) && (n < 2047 || (miller_rabin(n, 7) && miller_rabin(n, 61)));
 }
 
 constexpr bool primality_test(int n) noexcept{

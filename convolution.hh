@@ -93,7 +93,7 @@ template<typename T> struct BasicFft{
       for(int i=1; 1<<i<=n; ++i){
          int d = inverse? table.size()>>i: table.size()-(table.size()>>i);
          for(int j=0; j<n; j+=1<<i){
-            for(int k=0, a=0; k<1<<(i-1); ++k, a=a+d&table.size()-1){
+            for(int k=0, a=0; k<1<<(i-1); ++k, a=(a+d)&(table.size()-1)){
                std::complex<T> u = x[j|k], v = table[a]*x[j|1<<(i-1)|k];
                x[j|k] = u+v;
                x[j|1<<(i-1)|k] = u-v;

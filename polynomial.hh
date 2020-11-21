@@ -146,8 +146,11 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
    BasicFps(std::initializer_list<RingT> coef): BasicFps(Base(coef)){}
    template<typename It> BasicFps(It b, It e): BasicFps(Base(b, e)){}
    explicit BasicFps(Base coef): Base(move(coef)){}
-   std::vector<RingT> into_vec(){
-      std::vector<RingT> res;
+   Base const &as_vec() const noexcept{
+      return *this;
+   }
+   Base into_vec() noexcept{
+      Base res;
       res.swap(*this);
       return res;
    }
@@ -328,7 +331,7 @@ BasicFps<RingT> exp_fps(BasicFps<RingT> const &f, int n_terms){
 }
 
 template<typename RingT>
-RingT pow_fps(RingT const &f, I64 n, int n_terms){
+BasicFps<RingT> pow_fps(BasicFps<RingT> const &f, I64 n, int n_terms){
    // assert(n >= 0);
    if(n_terms <= 0) return {};
    if(n == 0) return 1;
@@ -360,6 +363,61 @@ std::optional<FpsMod<P>> sqrt_fps(FpsMod<P> const &f, int n_terms){
       res = (res+g.first_n_terms(2*i)*res.reciprocal(2*i))/2;
    }
    return std::move(res<<=low/2);
+}
+
+namespace impl{
+template<typename RingT>
+BasicFps<RingT> naive_comp_fps_dac(BasicFps<RingT> const &f, int n_terms, BasicFps<RingT> const *p, int l, int r){
+   if(l == r) return f.coef(l);
+   int m = l+(r-l)/2;
+   auto lo = naive_comp_fps_dac(f, n_terms, p+1, l, m);
+   auto hi = naive_comp_fps_dac(f, n_terms, p+1, m+1, r);
+   return (lo+*p*hi).truncate(n_terms);
+}
+
+template<typename RingT>
+BasicFps<RingT> naive_comp_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &g, int n_terms){
+   if(n_terms <= 0) return 0;
+   if(n_terms == 1) return f.coef(0);
+   int n = n_terms;
+   while(n != (n&-n)) n += n&-n;
+   std::vector<BasicFps<RingT>> powg{g};
+   for(int i=2; i<n; i*=2){
+      powg.push_back((powg.back()*powg.back()).truncate(n_terms));
+   }
+   reverse(powg.begin(), powg.end());
+   return naive_comp_fps_dac(f, n_terms, powg.data(), 0, n-1);
+}
+} // namespace impl
+
+template<typename RingT>
+BasicFps<RingT> composite_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &g, int n_terms){
+   // assert(g.coef(0));
+   if(n_terms <= 32){
+      return impl::naive_comp_fps(f, g, n_terms);
+   }
+   int m = 5*sqrt(n_terms/log2(n_terms));
+   auto gl = g.first_n_terms(m), gh = g-gl;
+   if(!gl){
+      BasicFps<RingT> res = f.coef(0), p = 1;
+      for(int i=1; i<=n_terms/m; ++i){
+         (p *= gh).truncate(n_terms);
+         res += f.coef(i)*p;
+      }
+      return res;
+   }
+   auto fogl = impl::naive_comp_fps(f, gl, n_terms), h = gl.derivative();
+   int shift = 0;
+   while(h.coef(shift) == 0) ++shift;
+   h = (h>>shift).reciprocal(n_terms-shift);
+   BasicFps<RingT> res = fogl, p = 1;
+   for(int i=1; i<=n_terms/m; ++i){
+      h.truncate(n_terms-i*shift);
+      fogl = ((fogl.derivative()>>shift)*h).truncate(n_terms-i*shift);
+      (p *= gh/i).truncate(n_terms);
+      res += fogl*p;
+   }
+   return res;
 }
 
 #undef U64
