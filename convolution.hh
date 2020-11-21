@@ -208,7 +208,7 @@ std::vector<RingZn<N>> convolution_pow2(std::vector<RingZn<N>> x, std::vector<Ri
    }
    return x;
 }
-}
+} // namespace impl
 
 template<
    typename InputIt1,
