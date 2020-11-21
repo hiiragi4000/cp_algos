@@ -2,10 +2,12 @@
 #define POLYNOMIAL_HH
 
 #include"convolution.hh"
+#include"number_theory.hh"
 #include<algorithm>
 #include<functional>
 #include<initializer_list>
 #include<optional>
+#include<type_traits>
 #include<vector>
 
 #define U32 unsigned
@@ -291,7 +293,7 @@ private:
    static std::pair<std::vector<RingT>, std::vector<RingT>> naive_division(std::vector<RingT> f, RingT const *g, int deg_g){
       int deg_f = (int)f.size()-1;
       if(deg_f < deg_g){
-         return {0, move(f)};
+         return {{}, move(f)};
       }
       std::vector<RingT> q(deg_f-deg_g+1);
       for(int i=deg_f-deg_g; i>=0; --i){
@@ -343,7 +345,7 @@ RingT pow_fps(RingT const &f, I64 n, int n_terms){
    return res <<= n*low;
 }
 
-template<U32 P>
+template<U32 P, typename = std::enable_if_t<primality_test(P) && P!=2>>
 std::optional<FpsMod<P>> sqrt_fps(FpsMod<P> const &f, int n_terms){
    int d = f.deg();
    if(d == -1) return 0;
@@ -357,7 +359,7 @@ std::optional<FpsMod<P>> sqrt_fps(FpsMod<P> const &f, int n_terms){
    for(int i=1; i<n_terms-low/2; i*=2){
       res = (res+g.first_n_terms(2*i)*res.reciprocal(2*i))/2;
    }
-   return res << low/2;
+   return std::move(res<<=low/2);
 }
 
 #undef U64
