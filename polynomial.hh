@@ -415,7 +415,7 @@ BasicFps<RingT> composite_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &g
       h.truncate(n_terms-i*shift);
       fogl = ((fogl.derivative()>>shift)*h).truncate(n_terms-i*shift);
       (p *= gh/i).truncate(n_terms);
-      res += fogl*p;
+      res += (fogl*p).truncate(n_terms);
    }
    return res;
 }
