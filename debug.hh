@@ -3,10 +3,11 @@
 
 #include<deque>
 #include<forward_list>
-#include<iosfwd>
 #include<list>
 #include<map>
+#include<ostream>
 #include<set>
+#include<tuple>
 #include<unordered_map>
 #include<unordered_set>
 #include<utility>
@@ -60,5 +61,26 @@ DEF_PRINT_DICT(std::unordered_multimap)
 DEF_PRINT_DICT(std::map)
 DEF_PRINT_DICT(std::multimap)
 #undef DEF_PRINT_DICT
+
+namespace impl{
+   template<size_t I, typename ...Ts> struct TupleFormatter{
+      std::ostream &operator()(std::ostream &os, std::tuple<Ts...> const &t){
+         if constexpr(I >= sizeof...(Ts)){
+            return os;
+         }else{
+            if constexpr(I > 0){
+               os << ", ";
+            }
+            os << std::get<I>(t);
+            return TupleFormatter<I+1, Ts...>()(os, t);
+         }
+      }
+   };
+}
+
+template<typename ...Ts>
+std::ostream &operator<<(std::ostream &os, std::tuple<Ts...> const &t){
+   return impl::TupleFormatter<0, Ts...>()(os<<'(', t) << ')';
+}
 
 #endif
