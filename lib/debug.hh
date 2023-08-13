@@ -63,20 +63,20 @@ DEF_PRINT_DICT(std::multimap)
 #undef DEF_PRINT_DICT
 
 namespace impl{
-   template<size_t I, typename ...Ts> struct TupleFormatter{
-      std::ostream &operator()(std::ostream &os, std::tuple<Ts...> const &t){
-         if constexpr(I >= sizeof...(Ts)){
-            return os;
-         }else{
-            if constexpr(I > 0){
-               os << ", ";
-            }
-            os << std::get<I>(t);
-            return TupleFormatter<I+1, Ts...>()(os, t);
+template<size_t I, typename ...Ts> struct TupleFormatter{
+   std::ostream &operator()(std::ostream &os, std::tuple<Ts...> const &t){
+      if constexpr(I >= sizeof...(Ts)){
+         return os;
+      }else{
+         if constexpr(I > 0){
+            os << ", ";
          }
+         os << std::get<I>(t);
+         return TupleFormatter<I+1, Ts...>()(os, t);
       }
-   };
-}
+   }
+};
+} // namespace impl
 
 template<typename ...Ts>
 std::ostream &operator<<(std::ostream &os, std::tuple<Ts...> const &t){
