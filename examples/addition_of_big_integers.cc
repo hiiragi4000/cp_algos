@@ -2,7 +2,6 @@
 #include"arbitrary_prec.hh"
 #include<iostream>
 #include<string>
-#include<utility>
 #include<cstdio>
 using namespace std;
 

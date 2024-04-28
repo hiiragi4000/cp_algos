@@ -1,6 +1,7 @@
 #ifndef ARBITRARY_PREC_HH
 #define ARBITRARY_PREC_HH
 
+#include"convolution.hh"
 #include<iomanip>
 #include<sstream>
 #include<stdexcept>
@@ -11,6 +12,7 @@
 #include<cstring>
 #include<cwctype>
 
+#define U32 unsigned
 #define I64 long long
 #define U64 unsigned long long
 
@@ -99,21 +101,45 @@ struct BigInt: private std::vector<int>{
             return add_std(rhs, false);
          }
          if(cmp_abs(rhs) >= 0){
-            return subtract_inv(rhs, false);
+            return sub_inv(rhs, false);
          }
-         return subtract_from_inv(rhs, false);
+         return sub_from_inv(rhs, false);
       }
       if(rhs.sgn() == -1){
          return into_inv().add_std(rhs, true).into_inv();
       }
       if(cmp_abs(rhs) >= 0){
-         return into_inv().subtract_inv(rhs, true).into_inv();
+         return into_inv().sub_inv(rhs, true).into_inv();
       }
-      return into_inv().subtract_from_inv(rhs, true).into_inv();
+      return into_inv().sub_from_inv(rhs, true).into_inv();
    }
    BigInt &operator-=(BigInt const &rhs){
       return (into_inv()+=rhs).into_inv();
    }
+#define THRES_MUL 32
+   BigInt &operator*=(BigInt const &rhs){
+      if(sgn() == 0){
+         return *this;
+      }
+      if(rhs.sgn() == 0){
+         clear();
+         return *this;
+      }
+      int sign = sgn() * rhs.sgn();
+      if(sgn() == -1){
+         into_inv();
+      }
+      if(size()<=THRES_MUL || rhs.size()<=THRES_MUL){
+         naive_mul(rhs);
+      }else{
+         fft_mul(rhs);
+      }
+      if(sign == -1){
+         into_inv();
+      }
+      return *this;
+   }
+#undef THRES_MUL
 private:
    BigInt &trunc(){
       while(!empty() && back()==0){
@@ -168,7 +194,7 @@ private:
       }
       return *this;
    }
-   BigInt &subtract_inv(BigInt const &rhs, bool this_inv){
+   BigInt &sub_inv(BigInt const &rhs, bool this_inv){
       for(size_t i=0; i<rhs.size()-1; ++i){
          data()[i] -= rhs[i];
          if(data()[i] < 0){
@@ -183,7 +209,7 @@ private:
       }
       return trunc();
    }
-   BigInt &subtract_from_inv(BigInt const &rhs, bool this_inv){
+   BigInt &sub_from_inv(BigInt const &rhs, bool this_inv){
       resize(rhs.size());
       bool borrow = false;
       for(size_t i=0; i<size()-1; ++i){
@@ -198,6 +224,85 @@ private:
       data()[size()-1] = (this_inv? rhs[size()-1]: -rhs[size()-1])-data()[size()-1]-borrow;
       return trunc().into_inv();
    }
+   BigInt &naive_mul(BigInt const &rhs){
+      BigInt res;
+      res.resize(size()+rhs.size());
+      U64 carry, new_digit;
+      for(size_t i=0; i<size(); ++i){
+         carry = 0;
+         for(size_t j=0; j<rhs.size()-1; ++j){
+            new_digit = res[i+j]+static_cast<U64>(data()[i])*rhs[j]+carry;
+            res[i+j] = new_digit % BASE;
+            carry = new_digit / BASE;
+         }
+         new_digit = res[i+rhs.size()-1]+static_cast<U64>(data()[i])*std::abs(rhs.back())+carry;
+         res[i+rhs.size()-1] = new_digit % BASE;
+         carry = new_digit / BASE;
+         if(carry){
+            res[i+rhs.size()] = static_cast<int>(carry);
+         }
+      }
+      if(res.back() == 0){
+         res.pop_back();
+      }
+      return *this = res;
+   }
+#define LOWBIT(N) ((N)&~(N)+1)
+   BigInt &fft_mul(BigInt const &rhs){
+      BigInt res;
+      res.resize(size()+rhs.size());
+      size_t n = size()+rhs.size()-1;
+      while(n != LOWBIT(n)){
+         n += LOWBIT(n);
+      }
+      std::vector<std::complex<double>> z(n);
+      for(size_t i=0; i<size(); ++i){
+         z[i] = data()[i];
+      }
+      for(size_t i=0; i<rhs.size()-1; ++i){
+         z[i] += std::complex<double>(0, rhs[i]);
+      }
+      z[rhs.size()-1] += std::complex<double>(0, std::abs(rhs.back()));
+      Fft fft;
+      fft.transform_in_place(false, z.begin(), n);
+      for(size_t i=0; i<n; ++i){
+         z[i] *= z[i];
+      }
+      fft.transform_in_place(true, z.begin(), n);
+      std::vector<U32> x(n), y(n);
+      for(size_t i=0; i<size(); ++i){
+         x[i] = data()[i];
+      }
+      for(size_t i=0; i<rhs.size()-1; ++i){
+         y[i] = rhs[i];
+      }
+      y[rhs.size()-1] = std::abs(rhs.back());
+      NttU32::transform_in_place(false, x.begin(), n);
+      NttU32::transform_in_place(false, y.begin(), n);
+      for(size_t i=0; i<n; ++i){
+         x[i] = static_cast<U64>(x[i])*y[i]%NttU32::prime();
+      }
+      NttU32::transform_in_place(true, x.begin(), n);
+      U64 carry = 0;
+      for(size_t i=0; i<size()+rhs.size()-1; ++i){
+         U64 q = static_cast<U64>(round((z[i].imag()/2-x[i])/NttU32::prime()));
+         U32 q1 = static_cast<U32>(q/BASE), r1 = q%BASE;
+         constexpr U32 q2 = NttU32::prime()/BASE, r2 = NttU32::prime()%BASE;
+         U32 q3 = x[i]/BASE, r3 = x[i]%BASE;
+         U32 q4 = static_cast<U32>(carry/BASE), r4 = carry%BASE;
+         carry = static_cast<U64>(q1)*q2*BASE + static_cast<U64>(q1)*r2 + q2*r1 + q3 + q4;
+         U64 temp = static_cast<U64>(r1)*r2 + r3 + r4;
+         carry += temp/BASE;
+         res[i] = temp%BASE;
+      }
+      if(carry){
+         res[res.size()-1] = static_cast<int>(carry);
+      }else{
+         res.pop_back();
+      }
+      return *this = res;
+   }
+#undef LOWBIT
    friend bool operator==(BigInt const &lhs, BigInt const &rhs);
    friend bool operator<(BigInt const &lhs, BigInt const &rhs);
    friend BigInt stob(char const *s, size_t *pos);
@@ -372,9 +477,11 @@ inline BigInt operator OP(BigInt &&lhs, BigInt const &rhs){\
 }
 DEF_BIOP(+)
 DEF_BIOP(-)
+DEF_BIOP(*)
 #undef DEF_BIOP
 
 #undef U64
 #undef I64
+#undef U32
 
 #endif // ARBITRARY_PREC_HH
