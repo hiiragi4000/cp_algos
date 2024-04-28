@@ -83,4 +83,4 @@ private:
    }
 };
 
-#endif
+#endif // COW_RC_HH

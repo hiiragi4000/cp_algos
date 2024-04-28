@@ -57,4 +57,4 @@ std::vector<std::pair<int, int>> l1_mst(Point2<T> const *pts, int n){
    return res;
 }
 
-#endif
+#endif // L1_MST_HH

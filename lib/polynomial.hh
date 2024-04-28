@@ -141,7 +141,7 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
    using Base::size;
    BasicFps() = default;
    template<typename INT, typename = std::enable_if_t<std::is_integral_v<INT>>>
-   constexpr BasicFps(INT c): BasicFps(static_cast<RingT>(c)){}
+   BasicFps(INT c): BasicFps(static_cast<RingT>(c)){}
    BasicFps(RingT const &c): BasicFps(c==0? Base{}: Base{c}){}
    BasicFps(std::initializer_list<RingT> coef): BasicFps(Base(coef)){}
    template<typename It> BasicFps(It b, It e): BasicFps(Base(b, e)){}
@@ -424,4 +424,4 @@ BasicFps<RingT> composite_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &g
 #undef I64
 #undef U32
 
-#endif
+#endif // POLYNOMIAL_HH

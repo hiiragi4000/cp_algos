@@ -80,4 +80,4 @@ private:
    }
 };
 
-#endif
+#endif // COW_HH

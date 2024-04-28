@@ -60,4 +60,4 @@ private:
    }
 };
 
-#endif
+#endif // HOPCROFT_KARP_HH

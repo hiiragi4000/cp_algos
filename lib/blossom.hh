@@ -106,4 +106,4 @@ private:
    }
 };
 
-#endif
+#endif // BLOSSOM_HH

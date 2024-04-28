@@ -40,4 +40,4 @@ constexpr auto operator*(Mat2<T1> const &A, Point2<T2> const &v) -> Point2<declt
    return {A.e11*v.x+A.e12*v.y, A.e21*v.x+A.e22*v.y};
 }
 
-#endif
+#endif // POINT2_HH

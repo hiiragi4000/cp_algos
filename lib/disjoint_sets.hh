@@ -66,4 +66,4 @@ private:
    enum {PARENT, SIZE};
 };
 
-#endif
+#endif // DISJOINT_SETS_HH

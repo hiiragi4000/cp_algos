@@ -157,4 +157,4 @@ private:
    }
 };
 
-#endif
+#endif // STRINGOLOGY_HH

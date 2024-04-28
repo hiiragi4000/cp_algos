@@ -12,6 +12,7 @@
 #include<vector>
 #include<cmath>
 
+#define I8 signed char
 #define U32 unsigned
 #define I64 long long
 #define U64 unsigned long long
@@ -22,13 +23,13 @@ struct PrimeEnumerator{
       int b = n/30+1;
       std::vector<bool> isp(b<<3, true);
       std::vector<int> primes{2, 3, 5};
-      primes.reserve(UB*30*b/std::log(30*b));
+      primes.reserve(static_cast<size_t>(UB*30*b/std::log(30*b)));
       isp[0] = false;
       for(int i=0; i<b; ++i){
          for(int j=0; j<8; ++j){
             I64 d = 30ll*i + r[j];
             if(d == 1) continue;
-            if(isp[i<<3|j]) primes.push_back(d);
+            if(isp[i<<3|j]) primes.push_back(static_cast<int>(d));
             for(int k=3; ; ++k){
                I64 pd = primes[k]*d;
                if(pd >= 30*b) break;
@@ -50,7 +51,7 @@ struct PrimeEnumerator{
    }
 private:
    static constexpr int r[] = {1, 7, 11, 13, 17, 19, 23, 29};
-   static constexpr signed char rinv[] = {
+   static constexpr I8 rinv[] = {
       -1,  0, -1, -1, -1, -1, -1,  1, -1, -1,
       -1,  2, -1,  3, -1, -1, -1,  4, -1,  5,
       -1, -1, -1,  6, -1, -1, -1, -1, -1,  7
@@ -66,7 +67,7 @@ inline std::vector<int> phi_table_leq(int n){
    for(I64 i=2; i<=n; ++i){
       if(phi[i] == i){
          --phi[i];
-         primes.push_back(i);
+         primes.push_back(static_cast<int>(i));
       }
       for(int p: primes){
          if(p*i > n) break;
@@ -81,15 +82,15 @@ inline std::vector<int> phi_table_leq(int n){
    return phi;
 }
 
-inline std::vector<signed char> mu_table_leq(int n){
+inline std::vector<I8> mu_table_leq(int n){
    // assert(n >= 1);
-   std::vector<signed char> mu(n+1u, -2);
+   std::vector<I8> mu(n+1u, -2);
    std::vector<int> primes;
    mu[0] = 0; mu[1] = 1;
    for(I64 i=2; i<=n; ++i){
       if(mu[i] == -2){
          mu[i] = -1;
-         primes.push_back(i);
+         primes.push_back(static_cast<int>(i));
       }
       for(int p: primes){
          if(p*i > n) break;
@@ -128,7 +129,7 @@ constexpr U32 pow_mod(I64 a, I64 n, U32 mod){
       if(n%2) res = res*t%mod;
       if(n/=2) t = t*t%mod;
    }
-   return res;
+   return static_cast<U32>(res);
 }
 
 constexpr bool miller_rabin(U32 n, U32 witness){
@@ -142,7 +143,7 @@ constexpr bool miller_rabin(U32 n, U32 witness){
    U32 x = pow_mod(witness, d, n);
    if(x==1 || x==n-1) return true;
    for(int cnt=r-1; cnt-->0; ){
-      x = (U64)x*x%n;
+      x = static_cast<U64>(x)*x%n;
       if(x == n-1) return true;
    }
    return false;
@@ -156,7 +157,7 @@ constexpr bool primality_test(U32 n) noexcept{
 }
 
 constexpr bool primality_test(int n) noexcept{
-   return n<0? false: primality_test((U32)n);
+   return n<0? false: primality_test(static_cast<U32>(n));
 }
 
 constexpr int jacobi_symbol(I64 a, I64 b){
@@ -174,7 +175,7 @@ constexpr int jacobi_symbol(I64 a, I64 b){
       if(a%4==3 && b%4==3){
          ok = !ok;
       }
-      int t = b%a; b = a; a = t;
+      I64 t = b%a; b = a; a = t;
    }
    return b>1? 0: ok? 1: -1;
 }
@@ -211,7 +212,7 @@ constexpr bool primitive_root_modp_check(U32 r, U32 p){
    if(r%p == 0) return false;
    U32 d = p-1;
    for(I64 q=2; q*q<=d; ++q) if(d%q == 0){
-      do d/=q; while(d%q==0);
+      do d/=static_cast<U32>(q); while(d%q==0);
       if(pow_mod(r, (p-1)/q, p) == 1) return false;
    }
    if(d>1 && pow_mod(r, (p-1)/d, p) == 1){
@@ -236,7 +237,7 @@ inline I64 discrete_log(I64 base, I64 power, U32 mod){
    if(mod==1 || power==1) return 0;
    U32 s = 1, d = 1, res = 0;
    while(1){
-      s = (U64)base*s%mod;
+      s = static_cast<U64>(base)*s%mod;
       ++res;
       if(s == power) return res;
       U32 d2 = std::gcd(s, mod);
@@ -247,30 +248,30 @@ inline I64 discrete_log(I64 base, I64 power, U32 mod){
       }
       d = d2;
    }
-   U32 m = std::ceil(std::sqrt(mod));
+   U32 m = static_cast<U32>(std::ceil(std::sqrt(mod)));
    std::unordered_map<U32, U32> bs(m);
    for(U32 i=0; i<m; ++i){
       bs.emplace(s, i);
-      s = (U64)base*s%mod;
+      s = static_cast<U64>(base)*s%mod;
    }
    U32 gs = pow_mod(base, -(I64)m, mod);
    for(U32 i=0; i<m; ++i){
-      if(auto it=bs.find(power); it!=bs.end()){
+      if(auto it=bs.find(static_cast<U32>(power)); it!=bs.end()){
          return res + i*m + it->second;
       }
-      power = (U64)gs*power%mod;
+      power = static_cast<U64>(gs)*power%mod;
    }
    return -1;
 }
 
 template<U32 N> struct RingZn{
-   using Base = std::conditional_t<(N<=(U32)std::numeric_limits<int>::max()), int, U32>;
+   using Base = std::conditional_t<(N<=static_cast<U32>(std::numeric_limits<int>::max())), int, U32>;
    static constexpr U32 mod() noexcept{
       return N;
    }
    RingZn() = default;
    template<typename INT, typename = std::enable_if_t<std::is_integral_v<INT>>>
-   constexpr RingZn(INT a) noexcept: a((a%=(I64)N)<0? (I64)a+N: a){}
+   constexpr RingZn(INT a) noexcept: a((a%=static_cast<I64>(N))<0? static_cast<I64>(a)+N: a){}
    template<typename INT, typename = std::enable_if_t<std::is_arithmetic_v<INT>>>
    constexpr explicit operator INT() const noexcept{
       return a;
@@ -290,11 +291,11 @@ template<U32 N> struct RingZn{
       return *this;
    }
    constexpr RingZn &operator*=(RingZn rhs) noexcept{
-      a = (U64)a * rhs.a % N;
+      a = static_cast<U64>(a) * rhs.a % N;
       return *this;
    }
    constexpr RingZn &operator/=(RingZn rhs) noexcept{
-      a = (U64)a * inv_mod(rhs.a, N) % N;
+      a = static_cast<U64>(a) * inv_mod(rhs.a, N) % N;
       return *this;
    }
    constexpr RingZn &operator++() noexcept{
@@ -323,7 +324,7 @@ template<U32 N> struct RingZn{
    DEF_BIOP(/)
 #undef DEF_BIOP
    friend constexpr bool operator==(RingZn lhs, RingZn rhs) noexcept{
-      return (U32)lhs == (U32)rhs;
+      return static_cast<U32>(lhs) == static_cast<U32>(rhs);
    }
    friend constexpr bool operator!=(RingZn lhs, RingZn rhs) noexcept{
       return !(lhs == rhs);
@@ -332,10 +333,10 @@ private:
    Base a = 0;
 };
 template<U32 N> RingZn<N> pow(RingZn<N> a, I64 b){
-   return pow_mod((I64)a, b, N);
+   return pow_mod(static_cast<I64>(a), b, N);
 }
 template<U32 N> std::ostream &operator<<(std::ostream &os, RingZn<N> a){
-   return os << (U32)a;
+   return os << static_cast<U32>(a);
 }
 
 template<typename> struct RingZnMod: std::integral_constant<U32, 0>{};
@@ -344,5 +345,6 @@ template<U32 N> struct RingZnMod<RingZn<N>>: std::integral_constant<U32, N>{};
 #undef U64
 #undef I64
 #undef U32
+#undef I8
 
-#endif
+#endif // NUMBER_THEORY_HH

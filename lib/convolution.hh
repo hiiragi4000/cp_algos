@@ -293,4 +293,4 @@ void convolution_int(InputIt1 b1, InputIt1 e1, InputIt2 b2, InputIt2 e2, int n, 
 #undef I64
 #undef U32
 
-#endif
+#endif // CONVOLUTION_HH

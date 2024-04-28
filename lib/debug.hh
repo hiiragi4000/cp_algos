@@ -83,4 +83,4 @@ std::ostream &operator<<(std::ostream &os, std::tuple<Ts...> const &t){
    return impl::TupleFormatter<0, Ts...>()(os<<'(', t) << ')';
 }
 
-#endif
+#endif // DEBUG_HH

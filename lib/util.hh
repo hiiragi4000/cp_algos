@@ -6,4 +6,4 @@
 template<typename It>
 using DerefType = typename std::iterator_traits<It>::value_type;
 
-#endif
+#endif // UTIL_HH

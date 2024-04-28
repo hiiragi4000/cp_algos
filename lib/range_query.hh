@@ -447,4 +447,4 @@ private:
 #undef I64
 #undef I8
 
-#endif
+#endif // RANGE_QUERY_HH
