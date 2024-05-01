@@ -11,7 +11,7 @@ int main(){
    while(T-- > 0){
       string sa, sb;
       cin >> sa >> sb;
-      // stob(char const *s, size_t *pos = nullptr):
+      // BigInt stob(char const *s, size_t *pos = nullptr):
       // Interprets a BigInt in the string |s|.
       // First it discards whitespaces (identified by std::isspace) until the first non-whitespace character is found.
       // Then it reads a BigInt consists of the following parts:

@@ -2,12 +2,14 @@
 #define ARBITRARY_PREC_HH
 
 #include"convolution.hh"
+#include<algorithm>
 #include<iomanip>
 #include<sstream>
 #include<stdexcept>
 #include<utility>
 #include<vector>
 #include<cctype>
+#include<csignal>
 #include<cstdlib>
 #include<cstring>
 #include<cwctype>
@@ -15,6 +17,10 @@
 #define U32 unsigned
 #define I64 long long
 #define U64 unsigned long long
+
+template<typename T> struct DivT{
+   T quot, rem;
+};
 
 struct BigInt: private std::vector<int>{
    constexpr static int BASE = 100'000'000;
@@ -76,18 +82,106 @@ struct BigInt: private std::vector<int>{
    int sgn() const noexcept{
       return empty()? 0: back()>0? 1: -1;
    }
-   BigInt operator+() const noexcept{
+   BigInt operator+() const{
       return *this;
    }
-   BigInt &into_inv(){
+   BigInt &into_inv() noexcept{
       if(!empty()){
-         data()[size()-1] = -data()[size()-1];
+         back() = -back();
       }
       return *this;
    }
-   BigInt operator-() const noexcept{
+   BigInt operator-() const{
       auto res = *this;
       return res.into_inv();
+   }
+   BigInt &into_abs() noexcept{
+      if(!empty()){
+         back() = std::abs(back());
+      }
+      return *this;
+   }
+   BigInt &operator++(){
+      if(sgn() == -1){
+         bool borrow = true;
+         for(size_t i=0; i<size()-1; ++i){
+            --data()[i];
+            if(data()[i] == -1){
+               data()[i] = BASE-1;
+            }else{
+               borrow = false;
+               break;
+            }
+         }
+         if(borrow){
+            ++back();
+            if(back() == 0){
+               pop_back();
+               into_inv();
+            }
+         }
+      }else{
+         bool carry = true;
+         for(size_t i=0; i<size(); ++i){
+            ++data()[i];
+            if(data()[i] == BASE){
+               data()[i] = 0;
+            }else{
+               carry = false;
+               break;
+            }
+         }
+         if(carry){
+            push_back(1);
+         }
+      }
+      return *this;
+   }
+   BigInt operator++(int){
+      BigInt res = *this;
+      ++*this;
+      return res;
+   }
+   BigInt &operator--(){
+      if(sgn() == -1){
+         bool carry = true;
+         for(size_t i=0; i<size()-1; ++i){
+            ++data()[i];
+            if(data()[i] == BASE){
+               data()[i] = 0;
+            }else{
+               carry = false;
+               break;
+            }
+         }
+         if(carry){
+            --back();
+            if(back() == -BASE){
+               back() = 0;
+               push_back(-1);
+            }
+         }
+      }else if(sgn() == 0){
+         push_back(-1);
+      }else{
+         for(size_t i=0; i<size(); ++i){
+            --data()[i];
+            if(data()[i] == -1){
+               data()[i] = BASE-1;
+            }else{
+               break;
+            }
+         }
+         if(back() == 0){
+            pop_back();
+         }
+      }
+      return *this;
+   }
+   BigInt operator--(int){
+      BigInt res = *this;
+      --*this;
+      return res;
    }
    BigInt &operator+=(BigInt const &rhs){
       if(sgn() == 0){
@@ -116,7 +210,7 @@ struct BigInt: private std::vector<int>{
    BigInt &operator-=(BigInt const &rhs){
       return (into_inv()+=rhs).into_inv();
    }
-#define THRES_MUL 32
+#define THRES_MUL 128
    BigInt &operator*=(BigInt const &rhs){
       if(sgn() == 0){
          return *this;
@@ -140,14 +234,42 @@ struct BigInt: private std::vector<int>{
       return *this;
    }
 #undef THRES_MUL
+#define THRES_DIV 64
+   DivT<BigInt> div(BigInt const &rhs) const{
+      if(rhs.sgn() == 0){
+         std::raise(SIGFPE);
+      }
+      if(size() < rhs.size()){
+         return {0, *this};
+      }
+      BigInt b = rhs;
+      b.into_abs();
+      DivT<BigInt> qr;
+      if(b.size()<=THRES_DIV || size()-b.size()<=THRES_DIV){
+         qr = naive_div(b);
+      }else{
+         qr = newton_div(b);
+      }
+      if(rhs.sgn() == -1){
+         qr.quot.into_inv();
+      }
+      return qr;
+   }
+#undef THRES_DIV
+   BigInt &operator/=(BigInt const &rhs){
+      return *this = div(rhs).quot;
+   }
+   BigInt &operator%=(BigInt const &rhs){
+      return *this = div(rhs).rem;
+   }
 private:
-   BigInt &trunc(){
+   BigInt &trunc() noexcept{
       while(!empty() && back()==0){
          pop_back();
       }
       return *this;
    }
-   int cmp_abs(BigInt const &rhs) const{
+   int cmp_abs(BigInt const &rhs) const noexcept{
       if(size() != rhs.size()){
          return (size()>rhs.size())-(size()<rhs.size());
       }
@@ -202,7 +324,7 @@ private:
             --data()[i+1];
          }
       }
-      data()[rhs.size()-1] += this_inv? -rhs[rhs.size()-1]: rhs[rhs.size()-1];
+      data()[rhs.size()-1] += this_inv? -rhs.back(): rhs.back();
       for(size_t i=rhs.size()-1; data()[i]<0; ++i){
          data()[i] += BASE;
          --data()[i+1];
@@ -221,7 +343,7 @@ private:
             borrow = false;
          }
       }
-      data()[size()-1] = (this_inv? rhs[size()-1]: -rhs[size()-1])-data()[size()-1]-borrow;
+      back() = (this_inv? rhs.back(): -rhs.back())-back()-borrow;
       return trunc().into_inv();
    }
    BigInt &naive_mul(BigInt const &rhs){
@@ -247,7 +369,7 @@ private:
       }
       return *this = res;
    }
-#define LOWBIT(N) ((N)&~(N)+1)
+#define LOWBIT(N) ((N)&(~(N)+1))
    BigInt &fft_mul(BigInt const &rhs){
       BigInt res;
       res.resize(size()+rhs.size());
@@ -296,27 +418,135 @@ private:
          res[i] = temp%BASE;
       }
       if(carry){
-         res[res.size()-1] = static_cast<int>(carry);
+         res.back() = static_cast<int>(carry);
       }else{
          res.pop_back();
       }
       return *this = res;
    }
 #undef LOWBIT
-   friend bool operator==(BigInt const &lhs, BigInt const &rhs);
-   friend bool operator<(BigInt const &lhs, BigInt const &rhs);
+   int base_div_eq(int b){
+      if(empty()){
+         return 0;
+      }
+      U64 r = 0;
+      for(size_t i=size(); i-->0; ){
+         r = BASE*r + data()[i];
+         U64 qi = r/b;
+         data()[i] = static_cast<int>(qi);
+         r -= qi*b;
+      }
+      if(back() == 0){
+         pop_back();
+      }
+      return static_cast<int>(r);
+   }
+   DivT<BigInt> naive_div(BigInt &b) const{
+      BigInt a = *this; a.into_abs();
+      if(b.size() == 1){
+         int r = a.base_div_eq(b[0]);
+         if(sgn() == -1){
+            a.into_inv(); r = -r;
+         }
+         return {std::move(a), r};
+      }
+      int c = BASE/(b.back()+1);
+      a *= c; b *= c;
+      BigInt q, qib;
+      q.resize(a.size()-b.size()+1);
+      U64 h = 0;
+      auto a_sub_at = [a=a.data()](BigInt const &rhs, size_t i){
+         for(size_t j=0; j<rhs.size(); ++j){
+            a[i+j] -= rhs[j];
+            if(a[i+j] < 0){
+               a[i+j] += BASE;
+               --a[i+j+1];
+            }
+         }
+      };
+      auto a_cmp_at = [&a](BigInt const &rhs, size_t i){
+         if(a.size()>i+rhs.size() && a[i+rhs.size()]>0){
+            return 1;
+         }
+         for(size_t j=rhs.size(); j-->0; ){
+            if(a[i+j] != rhs[j]){
+               return (a[i+j]>rhs[j]) - (a[i+j]<rhs[j]);
+            }
+         }
+         return 0;
+      };
+      for(size_t i=q.size(); i-->0; ){
+         h = BASE*h + a[i+b.size()-1];
+         int qi = static_cast<int>(h/(b.back()+1));
+         qib = b; qib *= qi;
+         a_sub_at(qib, i);
+         while(a_cmp_at(b, i) >= 0){
+            a_sub_at(b, i);
+            ++qi;
+         }
+         q[i] = qi;
+         h = a[i+b.size()-1];
+      }
+      q.trunc(); // directly checking q.back() doesn't work. (why?)
+      a.trunc().base_div_eq(c);
+      if(sgn() == -1){
+         q.into_inv(); a.into_inv();
+      }
+      return {std::move(q), std::move(a)};
+   }
+   DivT<BigInt> newton_div(BigInt &b) const{
+      BigInt a = *this; a.into_abs();
+      int c = BASE/(b.back()+1);
+      a *= c; b *= c;
+      BigInt x = static_cast<U64>(BASE)*BASE/(b.back()+1);
+      int k = 0;
+      for(; ; ++k){
+         U64 d = 1ull << k;
+         BigInt y;
+         y.resize(d+1);
+         std::copy_n(b.crbegin(), std::min(y.size(), b.size()), y.rbegin());
+         ++y;
+         BigInt z = x;
+         z *= y;
+         z.erase(z.cbegin(), z.cbegin()+d/2+1);
+         ++z;
+         BigInt t;
+         t.resize(d+2); t.back() = 2;
+         t -= z;
+         x *= t;
+         x.erase(x.cbegin(), x.cbegin()+d/2+1);
+         if(d >= a.size()-b.size()){
+            break;
+         }
+      }
+      BigInt q = a;
+      q *= x;
+      q.erase(q.cbegin(), q.cbegin()+b.size()+(1ull<<k)+1);
+      BigInt r = -q;
+      r *= b; r += a;
+      if(r.size()>b.size() || (r.size()==b.size() && !std::lexicographical_compare(r.crbegin(), r.crend(), b.crbegin(), b.crend()))){
+         ++q; r -= b;
+      }
+      r.base_div_eq(c);
+      if(sgn() == -1){
+         q.into_inv(); r.into_inv();
+      }
+      return {std::move(q), std::move(r)};
+   }
+   friend bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept;
+   friend bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept;
    friend BigInt stob(char const *s, size_t *pos);
    friend BigInt stob(wchar_t const *s, size_t *pos);
 };
 
-inline bool operator==(BigInt const &lhs, BigInt const &rhs){
+inline bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept{
    if(lhs.size() != rhs.size()){
       return false;
    }
    return std::memcmp(lhs.data(), rhs.data(), lhs.size()*sizeof*lhs.data()) == 0;
 }
 
-inline bool operator<(BigInt const &lhs, BigInt const &rhs){
+inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
    if(lhs.sgn() == -1){
       if(rhs.sgn()>=0 || lhs.size()>rhs.size()){
          return true;
@@ -385,7 +615,7 @@ inline BigInt stob(char const *s, size_t *pos=nullptr){
          }
       }
       if(neg){
-         res[res.size()-1] = -res[res.size()-1];
+         res.back() = -res.back();
       }
    }
    if(pos != nullptr){
@@ -440,7 +670,7 @@ inline BigInt stob(wchar_t const *s, size_t *pos=nullptr){
          }
       }
       if(neg){
-         res[res.size()-1] = -res[res.size()-1];
+         res.back() = -res.back();
       }
    }
    if(pos != nullptr){
@@ -451,19 +681,36 @@ err_no_conversion:
    throw std::invalid_argument("no conversion");
 }
 
-inline bool operator!=(BigInt const &lhs, BigInt const &rhs){
+inline BigInt sgn(BigInt const &a){
+   return a.sgn();
+}
+
+inline BigInt abs(BigInt const &a){
+   BigInt res = a;
+   return res.into_abs();
+}
+
+inline BigInt abs(BigInt &&a){
+   return a.into_abs();
+}
+
+inline DivT<BigInt> div(BigInt const &lhs, BigInt const &rhs){
+   return lhs.div(rhs);
+}
+
+inline bool operator!=(BigInt const &lhs, BigInt const &rhs) noexcept{
    return !(lhs == rhs);
 }
 
-inline bool operator<=(BigInt const &lhs, BigInt const &rhs){
+inline bool operator<=(BigInt const &lhs, BigInt const &rhs) noexcept{
    return !(rhs < lhs);
 }
 
-inline bool operator>(BigInt const &lhs, BigInt const &rhs){
+inline bool operator>(BigInt const &lhs, BigInt const &rhs) noexcept{
    return rhs < lhs;
 }
 
-inline bool operator>=(BigInt const &lhs, BigInt const &rhs){
+inline bool operator>=(BigInt const &lhs, BigInt const &rhs) noexcept{
    return !(lhs < rhs);
 }
 
@@ -478,6 +725,8 @@ inline BigInt operator OP(BigInt &&lhs, BigInt const &rhs){\
 DEF_BIOP(+)
 DEF_BIOP(-)
 DEF_BIOP(*)
+DEF_BIOP(/)
+DEF_BIOP(%)
 #undef DEF_BIOP
 
 #undef U64

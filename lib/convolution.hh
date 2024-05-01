@@ -13,7 +13,7 @@
 #define I64 long long
 #define U64 unsigned long long
 
-#define LOWBIT(NUM) ((NUM)&~(NUM)+1) 
+#define LOWBIT(NUM) ((NUM)&(~(NUM)+1))
 
 template<U32 P, U32 R> struct BasicNtt{
    static constexpr U32 prime() noexcept{
@@ -290,6 +290,8 @@ void convolution_int(InputIt1 b1, InputIt1 e1, InputIt2 b2, InputIt2 e2, size_t 
       res[i] = static_cast<OutT>(round(x[i].imag()/2));
    }
 }
+
+#undef LOWBIT
 
 #undef U64
 #undef I64
