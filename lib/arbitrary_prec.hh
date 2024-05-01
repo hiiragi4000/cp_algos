@@ -499,29 +499,31 @@ private:
       int c = BASE/(b.back()+1);
       a *= c; b *= c;
       BigInt x = static_cast<U64>(BASE)*BASE/(b.back()+1);
-      int k = 0;
-      for(; ; ++k){
-         U64 d = 1ull << k;
+      std::vector<size_t> d{a.size()-b.size()};
+      while(d.back() > 1){
+         d.push_back((d.back()+1)/2);
+      }
+      std::reverse(d.begin(), d.end());
+      size_t prev = 0;
+      for(size_t di: d){
          BigInt y;
-         y.resize(d+1);
+         y.resize(di+1);
          std::copy_n(b.crbegin(), std::min(y.size(), b.size()), y.rbegin());
          ++y;
          BigInt z = x;
          z *= y;
-         z.erase(z.cbegin(), z.cbegin()+d/2+1);
+         z.erase(z.cbegin(), z.cbegin()+prev+1);
          ++z;
          BigInt t;
-         t.resize(d+2); t.back() = 2;
+         t.resize(di+2); t.back() = 2;
          t -= z;
          x *= t;
-         x.erase(x.cbegin(), x.cbegin()+d/2+1);
-         if(d >= a.size()-b.size()){
-            break;
-         }
+         x.erase(x.cbegin(), x.cbegin()+prev+1);
+         prev = di;
       }
       BigInt q = a;
       q *= x;
-      q.erase(q.cbegin(), q.cbegin()+b.size()+(1ull<<k)+1);
+      q.erase(q.cbegin(), q.cbegin()+a.size()+1);
       BigInt r = -q;
       r *= b; r += a;
       if(r.size()>b.size() || (r.size()==b.size() && !std::lexicographical_compare(r.crbegin(), r.crend(), b.crbegin(), b.crend()))){
