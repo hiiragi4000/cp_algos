@@ -508,7 +508,7 @@ private:
       for(size_t di: d){
          BigInt y;
          y.resize(di+1);
-         std::copy_n(b.crbegin(), std::min(y.size(), b.size()), y.rbegin());
+         std::copy_n(b.crbegin(), std::min(b.size(), y.size()), y.rbegin());
          ++y;
          BigInt z = x;
          z *= y;
@@ -559,7 +559,7 @@ inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
       if(lhs.back() < rhs.back()){
          return true;
       }
-      return lexicographical_compare(rhs.crbegin()+1, rhs.crend(), lhs.crbegin()+1, lhs.crend());
+      return std::lexicographical_compare(rhs.crbegin()+1, rhs.crend(), lhs.crbegin()+1, lhs.crend());
    }
    if(lhs.sgn() == 0){
       return rhs.sgn() == 1;
@@ -570,7 +570,7 @@ inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
    if(lhs.size() < rhs.size()){
       return true;
    }
-   return lexicographical_compare(lhs.crbegin(), lhs.crend(), rhs.crbegin(), rhs.crend());
+   return std::lexicographical_compare(lhs.crbegin(), lhs.crend(), rhs.crbegin(), rhs.crend());
 }
 
 inline BigInt stob(char const *s, size_t *pos=nullptr){
@@ -722,7 +722,8 @@ inline BigInt operator OP(BigInt const &lhs, BigInt const &rhs){\
    return res OP##= rhs;\
 }\
 inline BigInt operator OP(BigInt &&lhs, BigInt const &rhs){\
-   return lhs OP##= rhs;\
+   lhs OP##= rhs;\
+   return std::move(lhs);\
 }
 DEF_BIOP(+)
 DEF_BIOP(-)
