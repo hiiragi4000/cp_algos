@@ -26,6 +26,7 @@ template<typename T> struct DivT{
 struct BigInt: private std::vector<int>{
    constexpr static int BASE = 100'000'000;
    constexpr static int LG10_BASE = 8;
+   constexpr static double LGBASE_2 = .03762874945799764940;
    using Base = std::vector<int>;
    using Base::capacity;
    using Base::get_allocator;
@@ -267,11 +268,56 @@ struct BigInt: private std::vector<int>{
       BigInt res = -1;
       return res -= *this;
    }
+   BigInt pow(size_t rhs) const{
+      if(rhs == 0){
+         return 1;
+      }
+      if(rhs==1 || empty() || (size()==1 && back()==1)){
+         return *this;
+      }
+      if(size()==1 && back()==-1){
+         return rhs%2==0? 1: -1;
+      }
+      std::vector<size_t> p{rhs};
+      while(p.back() > 1){
+         p.push_back(p.back()/2);
+      }
+      std::reverse(p.begin(), p.end());
+      BigInt res = *this;
+      for(size_t i=1; i<p.size(); ++i){
+         res *= res;
+         if(p[i]%2 == 1){
+            res *= *this;
+         }
+      }
+      return res;
+   }
    // BigInt &operator&=(BigInt const &rhs);
    // BigInt &operator^=(BigInt const &rhs);
    // BigInt &operator|=(BigInt const &rhs);
-   // BigInt &operator<<=(size_t rhs);
-   // BigInt &operator>>=(size_t rhs);
+   BigInt &operator<<=(size_t rhs){
+      if(empty()){
+         return *this;
+      }
+      return *this *= BigInt(2).pow(rhs);
+   }
+   BigInt &operator>>=(size_t rhs){
+      if(empty()){
+         return *this;
+      }
+      if(size() < std::floor(LGBASE_2*rhs)+1){
+         if(back() > 0){
+            clear();
+            return *this;
+         }
+         return *this = -1;
+      }
+      auto [q, r] = div(BigInt(2).pow(rhs));
+      if(r < 0){
+         --q;
+      }
+      return *this = std::move(q);
+   }
 private:
    BigInt &trunc() noexcept{
       while(!empty() && back()==0){
@@ -755,8 +801,8 @@ inline BigInt operator OP(BigInt &&lhs, size_t rhs){\
    lhs OP##= rhs;\
    return std::move(lhs);\
 }
-// DEF_SA(<<)
-// DEF_SA(>>)
+DEF_SA(<<)
+DEF_SA(>>)
 #undef DEF_SA
 
 #undef U64
