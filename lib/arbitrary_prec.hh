@@ -6,6 +6,7 @@
 #include<iomanip>
 #include<sstream>
 #include<stdexcept>
+#include<type_traits>
 #include<utility>
 #include<vector>
 #include<cctype>
@@ -92,7 +93,7 @@ struct BigInt: private std::vector<int>{
       return *this;
    }
    BigInt operator-() const{
-      auto res = *this;
+      BigInt res = *this;
       return res.into_inv();
    }
    BigInt &into_abs() noexcept{
@@ -262,6 +263,15 @@ struct BigInt: private std::vector<int>{
    BigInt &operator%=(BigInt const &rhs){
       return *this = div(rhs).rem;
    }
+   BigInt operator~() const{
+      BigInt res = -1;
+      return res -= *this;
+   }
+   // BigInt &operator&=(BigInt const &rhs);
+   // BigInt &operator^=(BigInt const &rhs);
+   // BigInt &operator|=(BigInt const &rhs);
+   // BigInt &operator<<=(size_t rhs);
+   // BigInt &operator>>=(size_t rhs);
 private:
    BigInt &trunc() noexcept{
       while(!empty() && back()==0){
@@ -407,7 +417,7 @@ private:
       NttU32::transform_in_place(true, x.begin(), n);
       U64 carry = 0;
       for(size_t i=0; i<size()+rhs.size()-1; ++i){
-         U64 q = static_cast<U64>(round((z[i].imag()/2-x[i])/NttU32::prime()));
+         U64 q = static_cast<U64>(std::round((z[i].imag()/2-x[i])/NttU32::prime()));
          U32 q1 = static_cast<U32>(q/BASE), r1 = q%BASE;
          constexpr U32 q2 = NttU32::prime()/BASE, r2 = NttU32::prime()%BASE;
          U32 q3 = x[i]/BASE, r3 = x[i]%BASE;
@@ -537,8 +547,8 @@ private:
    }
    friend bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept;
    friend bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept;
-   friend BigInt stob(char const *s, size_t *pos);
-   friend BigInt stob(wchar_t const *s, size_t *pos);
+   friend BigInt stob(char const *s, size_t *pos/*, int base*/);
+   friend BigInt stob(wchar_t const *s, size_t *pos/*, int base*/);
 };
 
 inline bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept{
@@ -573,7 +583,7 @@ inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
    return std::lexicographical_compare(lhs.crbegin(), lhs.crend(), rhs.crbegin(), rhs.crend());
 }
 
-inline BigInt stob(char const *s, size_t *pos=nullptr){
+inline BigInt stob(char const *s, size_t *pos=nullptr/*, int base=10*/){
    BigInt res;
    char const *b = s, *e;
    bool neg;
@@ -628,7 +638,7 @@ err_no_conversion:
    throw std::invalid_argument("no conversion");
 }
 
-inline BigInt stob(wchar_t const *s, size_t *pos=nullptr){
+inline BigInt stob(wchar_t const *s, size_t *pos=nullptr/*, int base=10*/){
    BigInt res;
    wchar_t const *b = s, *e;
    bool neg;
@@ -730,7 +740,22 @@ DEF_BIOP(-)
 DEF_BIOP(*)
 DEF_BIOP(/)
 DEF_BIOP(%)
+// DEF_BIOP(&)
+// DEF_BIOP(^)
+// DEF_BIOP(|)
 #undef DEF_BIOP
+#define DEF_SA(OP)\
+inline BigInt operator OP(BigInt const &lhs, size_t rhs){\
+   BigInt res = lhs;\
+   return res OP##= rhs;\
+}\
+inline BigInt operator OP(BigInt &&lhs, size_t rhs){\
+   lhs OP##= rhs;\
+   return std::move(lhs);\
+}
+// DEF_SA(<<)
+// DEF_SA(>>)
+#undef DEF_SA
 
 #undef U64
 #undef I64

@@ -45,7 +45,7 @@ struct PrimeEnumerator{
          if(i <= 1) return false;
          if(i==2 || i==3 || i==5) return true;
          if(i%2==0 || i%3==0 || i%5==0) return false;
-         return (bool)isp[i/30<<3|rinv[i%30]];
+         return static_cast<bool>(isp[i/30<<3|rinv[i%30]]);
       };
       return {primes, is_prime};
    }
@@ -254,7 +254,7 @@ inline I64 discrete_log(I64 base, I64 power, U32 mod){
       bs.emplace(s, i);
       s = static_cast<U64>(base)*s%mod;
    }
-   U32 gs = pow_mod(base, -(I64)m, mod);
+   U32 gs = pow_mod(base, -static_cast<I64>(m), mod);
    for(U32 i=0; i<m; ++i){
       if(auto it=bs.find(static_cast<U32>(power)); it!=bs.end()){
          return res + i*m + it->second;
@@ -280,14 +280,14 @@ template<U32 N> struct RingZn{
       return *this;
    }
    constexpr RingZn operator-() const noexcept{
-      return a? (Base)N-a: 0;
+      return a? static_cast<Base>(N)-a: 0;
    }
    constexpr RingZn &operator+=(RingZn rhs) noexcept{
-      a = a<(Base)N-rhs.a? a+rhs.a: a-((Base)N-rhs.a);
+      a = a<static_cast<Base>(N)-rhs.a? a+rhs.a: a-(static_cast<Base>(N)-rhs.a);
       return *this;
    }
    constexpr RingZn &operator-=(RingZn rhs) noexcept{
-      a = a<rhs.a? a+((Base)N-rhs.a): a-rhs.a;
+      a = a<rhs.a? a+(static_cast<Base>(N)-rhs.a): a-rhs.a;
       return *this;
    }
    constexpr RingZn &operator*=(RingZn rhs) noexcept{
@@ -299,7 +299,7 @@ template<U32 N> struct RingZn{
       return *this;
    }
    constexpr RingZn &operator++() noexcept{
-      a = a==(Base)N-1? 0: a+1;
+      a = a==static_cast<Base>(N)-1? 0: a+1;
       return *this;
    }
    constexpr RingZn operator++(int) noexcept{
@@ -307,16 +307,16 @@ template<U32 N> struct RingZn{
       return res;
    }
    constexpr RingZn &operator--() noexcept{
-      a = a? a-1: (Base)N-1;
+      a = a? a-1: static_cast<Base>(N)-1;
       return *this;
    }
    constexpr RingZn operator--(int) noexcept{
       RingZn res = *this; --*this;
       return res;
    }
-#define DEF_BIOP(op)\
-   friend constexpr RingZn operator op(RingZn lhs, RingZn rhs) noexcept{\
-      return lhs op##= rhs;\
+#define DEF_BIOP(OP)\
+   friend constexpr RingZn operator OP(RingZn lhs, RingZn rhs) noexcept{\
+      return lhs OP##= rhs;\
    }
    DEF_BIOP(+)
    DEF_BIOP(-)
@@ -332,7 +332,7 @@ template<U32 N> struct RingZn{
 private:
    Base a = 0;
 };
-template<U32 N> RingZn<N> pow(RingZn<N> a, I64 b){
+template<U32 N> constexpr RingZn<N> pow(RingZn<N> a, I64 b){
    return pow_mod(static_cast<I64>(a), b, N);
 }
 template<U32 N> std::ostream &operator<<(std::ostream &os, RingZn<N> a){

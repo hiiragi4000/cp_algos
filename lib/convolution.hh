@@ -5,6 +5,7 @@
 #include"util.hh"
 #include<algorithm>
 #include<complex>
+#include<type_traits>
 #include<utility>
 #include<vector>
 #include<cmath>

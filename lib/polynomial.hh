@@ -23,7 +23,7 @@ int fps_deg(std::vector<RingT> const &f) noexcept{
 template<typename RingT>
 std::vector<RingT> &fps_add_assign(std::vector<RingT> &f, std::vector<RingT> const &g){
    int d2 = fps_deg(g);
-   if((int)f.size() < d2+1) f.resize(d2+1);
+   if(static_cast<int>(f.size()) < d2+1) f.resize(d2+1);
    for(int i=0; i<=d2; ++i){
       f[i] += g[i];
    }
@@ -32,7 +32,7 @@ std::vector<RingT> &fps_add_assign(std::vector<RingT> &f, std::vector<RingT> con
 template<typename RingT>
 std::vector<RingT> &fps_sub_assign(std::vector<RingT> &f, std::vector<RingT> const &g){
    int d2 = fps_deg(g);
-   if((int)f.size() < d2+1) f.resize(d2+1);
+   if(static_cast<int>(f.size()) < d2+1) f.resize(d2+1);
    for(int i=0; i<=d2; ++i){
       f[i] -= g[i];
    }
@@ -58,9 +58,9 @@ template<typename RingT> struct FpsMulAssign{
          return f = fps_naive_mul(f.data(), d1, g.data(), d2, 0, d1+d2);
       }
       int n = std::max(d1, d2)/2+1;
-      auto mid = f.cbegin() + std::min(n, (int)f.size());
+      auto mid = f.cbegin() + std::min(n, static_cast<int>(f.size()));
       std::vector<RingT> a(f.cbegin(), mid), b(mid, f.cend());
-      mid = g.cbegin() + std::min(n, (int)g.size());
+      mid = g.cbegin() + std::min(n, static_cast<int>(g.size()));
       std::vector<RingT> c(g.cbegin(), mid), d(mid, g.cend());
       auto ac = a; (*this)(ac, c);
       auto bd = b; (*this)(bd, d);
@@ -68,7 +68,7 @@ template<typename RingT> struct FpsMulAssign{
       fps_sub_assign(fps_sub_assign(a, ac), bd);
       bd.insert(bd.cbegin(), 2*n, 0);
       int da = fps_deg(a);
-      if((int)bd.size() < n+da+1){
+      if(static_cast<int>(bd.size()) < n+da+1){
          bd.resize(n+da+1);
       }
       for(int i=0; i<=da; ++i){
@@ -90,10 +90,10 @@ template<U32 N> struct FpsMulAssign<RingZn<N>>{
 };
 #define RECIPROCAL_LIFTING(T) do{\
    std::vector<T> two{2};\
-   std::vector<T> first_2i(f.cbegin(), f.cbegin()+std::min(2*i, (int)f.size()));\
+   std::vector<T> first_2i(f.cbegin(), f.cbegin()+std::min(2*i, static_cast<int>(f.size())));\
    FpsMulAssign<T> mul_assign;\
    mul_assign(res, fps_sub_assign(two, mul_assign(first_2i, res)));\
-   if((int)res.size() > 2*i) res.resize(2*i);\
+   if(static_cast<int>(res.size()) > 2*i) res.resize(2*i);\
 }while(0)
 template<typename RingT> struct FpsReciprocal{
    std::vector<RingT> operator()(std::vector<RingT> const &f, int n_terms){
@@ -102,7 +102,7 @@ template<typename RingT> struct FpsReciprocal{
       for(int i=1; i<n_terms; i*=2){
          RECIPROCAL_LIFTING(RingT);
       }
-      if((int)res.size() > n_terms) res.resize(n_terms);
+      if(static_cast<int>(res.size()) > n_terms) res.resize(n_terms);
       return res;
    }
 };
@@ -112,7 +112,7 @@ template<U32 N> struct FpsReciprocal<RingZn<N>>{
       std::vector<RingZn<N>> res{1/f[0]};
       for(int i=1; i<n_terms; i*=2){
          if(primality_test(N) && 4*i<=Ntt<N>::max_size()){
-            std::vector<RingZn<N>> g(f.cbegin(), f.cbegin()+std::min(2*i, (int)f.size()));
+            std::vector<RingZn<N>> g(f.cbegin(), f.cbegin()+std::min(2*i, static_cast<int>(f.size())));
             res.resize(4*i); g.resize(4*i);
             Ntt<N>::transform_in_place(false, res.begin(), 4*i);
             Ntt<N>::transform_in_place(false, g.begin(), 4*i);
@@ -161,10 +161,10 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
       return deg() >= 0;
    }
    RingT coef(int i) const noexcept{
-      return i>=(int)size()? 0: (*this)[i];
+      return i>=static_cast<int>(size())? 0: (*this)[i];
    }
    template<typename T> BasicFps &set_coef(int i, T &&ci){
-      if(i >= (int)size()) resize(i+1);
+      if(i >= static_cast<int>(size())) resize(i+1);
       (*this)[i] = std::forward<T>(ci);
       return *this;
    }
@@ -184,23 +184,23 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
       return res <<= n_terms;
    }
    BasicFps &operator>>=(int n_terms){
-      erase(this->cbegin(), this->cbegin()+std::min(n_terms, (int)size()));
+      erase(this->cbegin(), this->cbegin()+std::min(n_terms, static_cast<int>(size())));
       return *this;
    }
    BasicFps operator>>(int n_terms) const{
-      if(n_terms < (int)size()){
+      if(n_terms < static_cast<int>(size())){
          return BasicFps(this->cbegin()+n_terms, this->cend());
       }
       return {};
    }
-   BasicFps &truncate(int n_terms) noexcept{
-      if(n_terms < (int)size()){
+   BasicFps &trunc(int n_terms) noexcept{
+      if(n_terms < static_cast<int>(size())){
          resize(n_terms);
       }
       return *this;
    }
    BasicFps first_n_terms(int n) const{
-      return BasicFps(this->cbegin(), this->cbegin()+std::min(n, (int)size()));
+      return BasicFps(this->cbegin(), this->cbegin()+std::min(n, static_cast<int>(size())));
    }
    BasicFps rev() const{
       int d = deg();
@@ -239,7 +239,7 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
          return *this = BasicFps(naive_division(std::move(*this), rhs.data(), d).first);
       }
       auto rf = rev(), rg = rhs.rev();
-      *this = rf.truncate(n-d+1)*rg.reciprocal(n-d+1);
+      *this = rf.trunc(n-d+1)*rg.reciprocal(n-d+1);
       resize(n-d+1);
       reverse(this->begin(), this->end());
       return *this;
@@ -252,7 +252,7 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
       }
       auto q = *this;
       q /= rhs; q *= rhs;
-      truncate(d); q.truncate(d);
+      trunc(d); q.trunc(d);
       return *this -= q;
    }
    BasicFps derivative() const{
@@ -275,9 +275,9 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
       }
       return res;
    }
-#define DEF_BIOP(op)\
-   friend BasicFps operator op(BasicFps lhs, BasicFps const &rhs){\
-      return lhs op##= rhs;\
+#define DEF_BIOP(OP)\
+   friend BasicFps operator OP(BasicFps lhs, BasicFps const &rhs){\
+      return lhs OP##= rhs;\
    }
    DEF_BIOP(+)
    DEF_BIOP(-)
@@ -294,7 +294,7 @@ template<typename RingT> struct BasicFps: private std::vector<RingT>{
    }
 private:
    static std::pair<std::vector<RingT>, std::vector<RingT>> naive_division(std::vector<RingT> f, RingT const *g, int deg_g){
-      int deg_f = (int)f.size()-1;
+      int deg_f = static_cast<int>(f.size())-1;
       if(deg_f < deg_g){
          return {{}, move(f)};
       }
@@ -318,7 +318,7 @@ template<typename RingT>
 BasicFps<RingT> log_fps(BasicFps<RingT> const &f, int n_terms){
    // assert(f.coef(0) == 1);
    if(n_terms <= 0) return {};
-   return (f.derivative()*f.reciprocal(n_terms-1)).truncate(n_terms-1).integral();
+   return (f.derivative()*f.reciprocal(n_terms-1)).trunc(n_terms-1).integral();
 }
 
 template<typename RingT>
@@ -327,7 +327,7 @@ BasicFps<RingT> exp_fps(BasicFps<RingT> const &f, int n_terms){
    if(n_terms <= 0) return {};
    if(n_terms == 1) return 1;
    auto g = exp_fps(f.first_n_terms((n_terms+1)/2), (n_terms+1)/2);
-   return (g*(1-log_fps(g, n_terms)+f)).truncate(n_terms);
+   return (g*(1-log_fps(g, n_terms)+f)).trunc(n_terms);
 }
 
 template<typename RingT>
@@ -355,7 +355,7 @@ std::optional<FpsMod<P>> sqrt_fps(FpsMod<P> const &f, int n_terms){
    int low = 0;
    while(!f.coef(low)) ++low;
    I64 c0;
-   if(low % 2 || (c0 = sqrt_modp((U32)f.coef(low), P)) == -1){
+   if(low % 2 || (c0 = sqrt_modp(static_cast<U32>(f.coef(low)), P)) == -1){
       return {};
    }
    FpsMod<P> g = f>>low, res = c0;
@@ -372,7 +372,7 @@ BasicFps<RingT> naive_comp_fps_dac(BasicFps<RingT> const &f, int n_terms, BasicF
    int m = l+(r-l)/2;
    auto lo = naive_comp_fps_dac(f, n_terms, p+1, l, m);
    auto hi = naive_comp_fps_dac(f, n_terms, p+1, m+1, r);
-   return (lo+*p*hi).truncate(n_terms);
+   return (lo+*p*hi).trunc(n_terms);
 }
 
 template<typename RingT>
@@ -383,7 +383,7 @@ BasicFps<RingT> naive_comp_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &
    while(n != (n&-n)) n += n&-n;
    std::vector<BasicFps<RingT>> powg{g};
    for(int i=2; i<n; i*=2){
-      powg.push_back((powg.back()*powg.back()).truncate(n_terms));
+      powg.push_back((powg.back()*powg.back()).trunc(n_terms));
    }
    reverse(powg.begin(), powg.end());
    return naive_comp_fps_dac(f, n_terms, powg.data(), 0, n-1);
@@ -401,7 +401,7 @@ BasicFps<RingT> composite_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &g
    if(!gl){
       BasicFps<RingT> res = f.coef(0), p = 1;
       for(int i=1; i<=n_terms/m; ++i){
-         (p *= gh).truncate(n_terms);
+         (p *= gh).trunc(n_terms);
          res += f.coef(i)*p;
       }
       return res;
@@ -412,10 +412,10 @@ BasicFps<RingT> composite_fps(BasicFps<RingT> const &f, BasicFps<RingT> const &g
    h = (h>>shift).reciprocal(n_terms-shift);
    BasicFps<RingT> res = fogl, p = 1;
    for(int i=1; i<=n_terms/m; ++i){
-      h.truncate(n_terms-i*shift);
-      fogl = ((fogl.derivative()>>shift)*h).truncate(n_terms-i*shift);
-      (p *= gh/i).truncate(n_terms);
-      res += (fogl*p).truncate(n_terms);
+      h.trunc(n_terms-i*shift);
+      fogl = ((fogl.derivative()>>shift)*h).trunc(n_terms-i*shift);
+      (p *= gh/i).trunc(n_terms);
+      res += (fogl*p).trunc(n_terms);
    }
    return res;
 }
