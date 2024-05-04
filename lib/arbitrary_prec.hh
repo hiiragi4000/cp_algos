@@ -497,7 +497,9 @@ private:
          q[i] = qi;
          h = a[i+b.size()-1];
       }
-      q.trunc(); // directly checking q.back() doesn't work. (why?)
+      if(q.back() == 0){
+         q.pop_back();
+      }
       a.trunc().base_div_eq(c);
       if(sgn() == -1){
          q.into_inv(); a.into_inv();
