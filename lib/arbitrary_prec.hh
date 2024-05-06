@@ -3,6 +3,7 @@
 
 #include"convolution.hh"
 #include<algorithm>
+#include<array>
 #include<iomanip>
 #include<sstream>
 #include<stdexcept>
@@ -19,6 +20,75 @@
 #define I64 long long
 #define U64 unsigned long long
 
+#define LOWBIT(N) ((N)&(~(N)+1))
+
+namespace impl{
+inline void bigint_change_base(int *a, size_t n, U32 b1, U32 b2){
+   // assert(n = 2^k for some k >= 1, 0 <= a[i] < b1 for all i, 1 < b1 < b2);
+   Fft fft;
+   std::vector<int> pb(n/2);
+   std::vector<std::complex<double>> fa(n), fpb(n);
+   std::vector<U32> na(n), npb(n);
+   pb[0] = b1;
+   for(size_t l=1; ; l*=2){
+      for(size_t i=0; i<l; ++i){
+         fpb[i] = npb[i] = pb[i];
+      }
+      fft.transform_in_place(false, fpb.begin(), 2*l);
+      NttU32::transform_in_place(false, npb.begin(), 2*l);
+      for(size_t i=0; i<n; i+=2*l){
+         for(size_t j=0; j<l; ++j){
+            fa[j] = na[j] = a[i+l+j];
+         }
+         std::fill(fa.begin()+l, fa.begin()+2*l, 0);
+         std::fill(na.begin()+l, na.begin()+2*l, 0);
+         fft.transform_in_place(false, fa.begin(), 2*l);
+         NttU32::transform_in_place(false, na.begin(), 2*l);
+         for(size_t j=0; j<2*l; ++j){
+            fa[j] *= fpb[j];
+            na[j] = static_cast<U64>(na[j])*npb[j]%NttU32::prime();
+         }
+         fft.transform_in_place(true, fa.begin(), 2*l);
+         NttU32::transform_in_place(true, na.begin(), 2*l);
+         std::fill(a+i+l, a+i+2*l, 0);
+         U64 carry = 0;
+         for(size_t j=0; j<2*l; ++j){
+            U64 q = static_cast<U64>(std::round((fa[j].real()-na[j])/NttU32::prime()));
+            U32 q1 = static_cast<U32>(q/b2), r1 = q%b2;
+            U32 q2 = NttU32::prime()/b2, r2 = NttU32::prime()%b2;
+            U32 q3 = na[j]/b2, r3 = na[j]%b2;
+            U32 q4 = static_cast<U32>(carry/b2), r4 = carry%b2;
+            carry = static_cast<U64>(q1)*q2*b2 + static_cast<U64>(q1)*r2 + q2*r1 + q3 + q4;
+            U64 temp = static_cast<U64>(r1)*r2 + r3 + r4 + a[i+j];
+            carry += temp/b2;
+            a[i+j] = temp%b2;
+         }
+      }
+      if(l == n/2){
+         break;
+      }
+      for(size_t i=0; i<2*l; ++i){
+         fpb[i] *= fpb[i];
+         npb[i] = static_cast<U64>(npb[i])*npb[i]%NttU32::prime();
+      }
+      fft.transform_in_place(true, fpb.begin(), 2*l);
+      NttU32::transform_in_place(true, npb.begin(), 2*l);
+      U64 carry = 0;
+      for(size_t i=0; i<2*l; ++i){
+         U64 q = static_cast<U64>(std::round((fpb[i].real()-npb[i])/NttU32::prime()));
+         U32 q1 = static_cast<U32>(q/b2), r1 = q%b2;
+         U32 q2 = NttU32::prime()/b2, r2 = NttU32::prime()%b2;
+         U32 q3 = npb[i]/b2, r3 = npb[i]%b2;
+         U32 q4 = static_cast<U32>(carry/b2), r4 = carry%b2;
+         carry = static_cast<U64>(q1)*q2*b2 + static_cast<U64>(q1)*r2 + q2*r1 + q3 + q4;
+         U64 temp = static_cast<U64>(r1)*r2 + r3 + r4;
+         carry += temp/b2;
+         pb[i] = temp%b2;
+      }
+   }
+}
+} // namespace impl
+
 template<typename T> struct DivT{
    T quot, rem;
 };
@@ -26,7 +96,37 @@ template<typename T> struct DivT{
 struct BigInt: private std::vector<int>{
    constexpr static int BASE = 100'000'000;
    constexpr static int LG10_BASE = 8;
+   constexpr static int SHRT_BASE = 1'000'000;
+   constexpr static int LG10_SHRT_BASE = 6;
    constexpr static double LGBASE_2 = .03762874945799764940;
+   constexpr static std::array<int, LG10_BASE+1> EXP10 = [](){
+      std::array<int, LG10_BASE+1> res{1};
+      for(int i=1; i<=LG10_BASE; ++i){
+         res[i] = 10*res[i-1];
+      }
+      return res;
+   }();
+   constexpr static std::array<int, 37> LGD_BASE = [](){
+      std::array<int, 37> res{};
+      for(int i=2; i<=36; ++i){
+         int b = BASE, ri = 0;
+         while(b >= i){
+            b /= i; ++ri;
+         }
+         res[i] = ri;
+      }
+      return res;
+   }();
+   constexpr static std::array<int, 37> BASE_CHG = [](){
+      std::array<int, 37> res{};
+      for(int i=2; i<=36; ++i){
+         res[i] = 1;
+         for(int t=LGD_BASE[i]; t-->0; ){
+            res[i] *= i;
+         }
+      }
+      return res;
+   }();
    using Base = std::vector<int>;
    using Base::capacity;
    using Base::get_allocator;
@@ -69,6 +169,45 @@ struct BigInt: private std::vector<int>{
       }
       return oss.str();
    }
+   std::string to_string() const{
+      return std::string(*this);
+   }
+   std::string to_string(int base) const{
+      if(base == 10){
+         return std::string(*this);
+      }
+      if(base<2 || base>36){
+         throw std::out_of_range("base out of range [2, 36]");
+      }
+      std::vector<int> v = vec_in_base(base);
+      if(v.empty()){
+         return "0";
+      }
+      std::string res;
+      auto digit = [](int d){
+         return static_cast<char>(d<10? '0'+d: 'A'+(d-10));
+      };
+      for(size_t i=0; i<v.size()-1; ++i){
+         for(int j=LGD_BASE[base]; j-->0; ){
+            res += digit(v[i]%base);
+            v[i] /= base;
+         }
+      }
+      bool neg = false;
+      if(v.back() < 0){
+         neg = true;
+         v.back() = -v.back();
+      }
+      while(v.back() > 0){
+         res += digit(v.back()%base);
+         v.back() /= base;
+      }
+      if(neg){
+         res += '-';
+      }
+      std::reverse(res.begin(), res.end());
+      return res;
+   }
    explicit operator std::wstring() const{
       std::wostringstream oss;
       if(empty()){
@@ -80,6 +219,45 @@ struct BigInt: private std::vector<int>{
          }
       }
       return oss.str();
+   }
+   std::wstring to_wstring() const{
+      return std::wstring(*this);
+   }
+   std::wstring to_wstring(int base) const{
+      if(base == 10){
+         return std::wstring(*this);
+      }
+      if(base<2 || base>36){
+         throw std::out_of_range("base out of range [2, 36]");
+      }
+      std::vector<int> v = vec_in_base(base);
+      if(v.empty()){
+         return L"0";
+      }
+      std::wstring res;
+      auto digit = [](int d){
+         return static_cast<wchar_t>(d<10? L'0'+d: L'A'+(d-10));
+      };
+      for(size_t i=0; i<v.size()-1; ++i){
+         for(int j=LGD_BASE[base]; j-->0; ){
+            res += digit(v[i]%base);
+            v[i] /= base;
+         }
+      }
+      bool neg = false;
+      if(v.back() < 0){
+         neg = true;
+         v.back() = -v.back();
+      }
+      while(v.back() > 0){
+         res += digit(v.back()%base);
+         v.back() /= base;
+      }
+      if(neg){
+         res += L'-';
+      }
+      std::reverse(res.begin(), res.end());
+      return res;
    }
    int sgn() const noexcept{
       return empty()? 0: back()>0? 1: -1;
@@ -313,12 +491,49 @@ struct BigInt: private std::vector<int>{
          return *this = -1;
       }
       auto [q, r] = div(BigInt(2).pow(rhs));
-      if(r < 0){
+      if(r.sgn() == -1){
          --q;
       }
       return *this = std::move(q);
    }
 private:
+   std::vector<int> vec_in_base(int base) const{
+      if(base==10 || empty() || (size()==1 && std::abs(data()[0])<BASE_CHG[base])){
+         return *this;
+      }
+      bool neg = false;
+      if(sgn() == -1){
+         neg = true;
+      }
+      std::vector<int> a;
+      I64 d = 0;
+      int rem = 0;
+      for(size_t i=0; i<size(); ++i){
+         d += static_cast<I64>(EXP10[rem])*std::abs(data()[i]);
+         rem += LG10_BASE;
+         while(rem >= LG10_SHRT_BASE){
+            a.push_back(d%SHRT_BASE);
+            d /= SHRT_BASE;
+            rem -= LG10_SHRT_BASE;
+         }
+      }
+      if(rem > 0){
+         a.push_back(static_cast<int>(d));
+      }
+      size_t n = a.size();
+      while(n != LOWBIT(n)){
+         n += LOWBIT(n);
+      }
+      a.resize(n);
+      impl::bigint_change_base(a.data(), n, SHRT_BASE, BASE_CHG[base]);
+      while(a.back() == 0){
+         a.pop_back();
+      }
+      if(neg){
+         a.back() = -a.back();
+      }
+      return a;
+   }
    BigInt &trunc() noexcept{
       while(!empty() && back()==0){
          pop_back();
@@ -425,7 +640,6 @@ private:
       }
       return *this = res;
    }
-#define LOWBIT(N) ((N)&(~(N)+1))
    BigInt &fft_mul(BigInt const &rhs){
       BigInt res;
       res.resize(size()+rhs.size());
@@ -480,7 +694,6 @@ private:
       }
       return *this = res;
    }
-#undef LOWBIT
    int base_div_eq(int b){
       if(empty()){
          return 0;
@@ -536,9 +749,14 @@ private:
          int qi = static_cast<int>(h/(b.back()+1));
          qib = b; qib *= qi;
          a_sub_at(qib, i);
-         while(a_cmp_at(b, i) >= 0){
+         if(a_cmp_at(b, i) >= 0){
             a_sub_at(b, i);
-            ++qi;
+            if(a_cmp_at(b, i) >= 0){
+               a_sub_at(b, i);
+               qi += 2;
+            }else{
+               ++qi;
+            }
          }
          q[i] = qi;
          h = a[i+b.size()-1];
@@ -595,8 +813,8 @@ private:
    }
    friend bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept;
    friend bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept;
-   friend BigInt stob(char const *s, size_t *pos/*, int base*/);
-   friend BigInt stob(wchar_t const *s, size_t *pos/*, int base*/);
+   friend BigInt stob(char const *s, size_t *pos, int base);
+   friend BigInt stob(wchar_t const *s, size_t *pos, int base);
 };
 
 inline bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept{
@@ -631,19 +849,15 @@ inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
    return std::lexicographical_compare(lhs.crbegin(), lhs.crend(), rhs.crbegin(), rhs.crend());
 }
 
-inline BigInt stob(char const *s, size_t *pos=nullptr/*, int base=10*/){
+inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
    BigInt res;
-   char const *b = s, *e;
+   char const *b = s;
    bool neg;
-   int *di;
    while(std::isspace(*b)){
       ++b;
    }
-   if(*b == '\0'){
-      goto err_no_conversion;
-   }
    neg = false;
-   for(;; ++b){
+   for(; ; ++b){
       if(*b == '+'){
          continue;
       }
@@ -653,52 +867,127 @@ inline BigInt stob(char const *s, size_t *pos=nullptr/*, int base=10*/){
       }
       break;
    }
-   if(!std::isdigit(*b)){
-      goto err_no_conversion;
-   }
-   while(*b == '0'){
-      ++b;
-   }
-   e = b;
-   while(std::isdigit(*e)){
-      ++e;
-   }
-   if(e > b){
-      res.resize((e-b-1)/BigInt::LG10_BASE+1);
-      di = res.data()+res.size()-1;
-      for(int r=static_cast<int>((e-b-1)%BigInt::LG10_BASE)+1; r-->0; ++b){
-         *di = 10**di + (*b-'0');
+   if(base == 0){
+      if(!std::isdigit(*b)){
+         goto err_no_conversion;
       }
-      while(di-- > res.data()){
-         for(int j=BigInt::LG10_BASE; j-->0; ++b){
+      if(*b == '0'){
+         if('0'<=b[1] && b[1]<='7'){
+            ++b;
+            base = 8;
+         }else if(b[1]=='X' || b[1]=='x'){
+            if(std::isxdigit(b[2])){
+               b += 2;
+               base = 16;
+            }else{
+               base = 10;
+            }
+         }else{
+            base = 10;
+         }
+      }else{
+         base = 10;
+      }
+   }
+   if(base == 10){
+      if(!std::isdigit(*b)){
+         goto err_no_conversion;
+      }
+      while(*b == '0'){
+         ++b;
+      }
+      char const *e = b;
+      while(std::isdigit(*e)){
+         ++e;
+      }
+      if(e > b){
+         res.resize((e-b-1)/BigInt::LG10_BASE+1);
+         int *di = res.data()+res.size()-1;
+         for(int r=static_cast<int>((e-b-1)%BigInt::LG10_BASE)+1; r-->0; ++b){
             *di = 10**di + (*b-'0');
          }
+         while(di-- > res.data()){
+            for(int j=BigInt::LG10_BASE; j-->0; ++b){
+               *di = 10**di + (*b-'0');
+            }
+         }
+         if(neg){
+            res.back() = -res.back();
+         }
       }
-      if(neg){
-         res.back() = -res.back();
+      if(pos != nullptr){
+         *pos = e-s;
       }
-   }
-   if(pos != nullptr){
-      *pos = e-s;
+   }else{
+      auto digit = [base](char c){
+         if(base > 10){
+            if(std::isdigit(c)){
+               return c-'0';
+            }
+            if('A'<=c && c<'A'+(base-10)){
+               return c-'A'+10;
+            }
+            if('a'<=c && c<'a'+(base-10)){
+               return c-'a'+10;
+            }
+            return -1;
+         }
+         if('0'<=c && c<'0'+base){
+            return c-'0';
+         }
+         return -1;
+      };
+      if(digit(*b) == -1){
+         goto err_no_conversion;
+      }
+      while(*b == '0'){
+         ++b;
+      }
+      char const *e = b;
+      while(digit(*e) != -1){
+         ++e;
+      }
+      if(e > b){
+         size_t len = (e-b-1)/BigInt::LGD_BASE[base]+1, n = len;
+         while(n != LOWBIT(n)){
+            n += LOWBIT(n);
+         }
+         res.resize(n);
+         int *di = res.data()+len-1;
+         for(int r=static_cast<int>((e-b-1)%BigInt::LGD_BASE[base])+1; r-->0; ++b){
+            *di = base**di + digit(*b);
+         }
+         while(di-- > res.data()){
+            for(int j=BigInt::LGD_BASE[base]; j-->0; ++b){
+               *di = base**di + digit(*b);
+            }
+         }
+         if(n > 1){
+            impl::bigint_change_base(res.data(), n, BigInt::BASE_CHG[base], BigInt::BASE);
+            res.trunc();
+            if(neg){
+               res.back() = -res.back();
+            }
+         }
+      }
+      if(pos != nullptr){
+         *pos = e-s;
+      }
    }
    return res;
 err_no_conversion:
    throw std::invalid_argument("no conversion");
 }
 
-inline BigInt stob(wchar_t const *s, size_t *pos=nullptr/*, int base=10*/){
+inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
    BigInt res;
-   wchar_t const *b = s, *e;
+   wchar_t const *b = s;
    bool neg;
-   int *di;
    while(std::iswspace(*b)){
       ++b;
    }
-   if(*b == L'\0'){
-      goto err_no_conversion;
-   }
    neg = false;
-   for(;; ++b){
+   for(; ; ++b){
       if(*b == L'+'){
          continue;
       }
@@ -708,33 +997,112 @@ inline BigInt stob(wchar_t const *s, size_t *pos=nullptr/*, int base=10*/){
       }
       break;
    }
-   if(!std::iswdigit(*b)){
-      goto err_no_conversion;
-   }
-   while(*b == L'0'){
-      ++b;
-   }
-   e = b;
-   while(std::iswdigit(*e)){
-      ++e;
-   }
-   if(e > b){
-      res.resize((e-b-1)/BigInt::LG10_BASE+1);
-      di = res.data()+res.size()-1;
-      for(int r=static_cast<int>((e-b-1)%BigInt::LG10_BASE)+1; r-->0; ++b){
-         *di = 10**di + (*b-L'0');
+   if(base == 0){
+      if(!std::iswdigit(*b)){
+         goto err_no_conversion;
       }
-      while(di-- > res.data()){
-         for(int j=BigInt::LG10_BASE; j-->0; ++b){
+      if(*b == L'0'){
+         if(L'0'<=b[1] && b[1]<=L'7'){
+            ++b;
+            base = 8;
+         }else if(b[1]==L'X' || b[1]==L'x'){
+            if(std::iswxdigit(b[2])){
+               b += 2;
+               base = 16;
+            }else{
+               base = 10;
+            }
+         }else{
+            base = 10;
+         }
+      }else{
+         base = 10;
+      }
+   }
+   if(base == 10){
+      if(!std::iswdigit(*b)){
+         goto err_no_conversion;
+      }
+      while(*b == '0'){
+         ++b;
+      }
+      wchar_t const *e = b;
+      while(std::iswdigit(*e)){
+         ++e;
+      }
+      if(e > b){
+         res.resize((e-b-1)/BigInt::LG10_BASE+1);
+         int *di = res.data()+res.size()-1;
+         for(int r=static_cast<int>((e-b-1)%BigInt::LG10_BASE)+1; r-->0; ++b){
             *di = 10**di + (*b-L'0');
          }
+         while(di-- > res.data()){
+            for(int j=BigInt::LG10_BASE; j-->0; ++b){
+               *di = 10**di + (*b-L'0');
+            }
+         }
+         if(neg){
+            res.back() = -res.back();
+         }
       }
-      if(neg){
-         res.back() = -res.back();
+      if(pos != nullptr){
+         *pos = e-s;
       }
-   }
-   if(pos != nullptr){
-      *pos = e-s;
+   }else{
+      auto digit = [base](wchar_t c){
+         if(base > 10){
+            if(std::iswdigit(c)){
+               return c-L'0';
+            }
+            if(L'A'<=c && c<L'A'+(base-10)){
+               return c-L'A'+10;
+            }
+            if(L'a'<=c && c<L'a'+(base-10)){
+               return c-L'a'+10;
+            }
+            return -1;
+         }
+         if(L'0'<=c && c<L'0'+base){
+            return c-L'0';
+         }
+         return -1;
+      };
+      if(digit(*b) == -1){
+         goto err_no_conversion;
+      }
+      while(*b == L'0'){
+         ++b;
+      }
+      wchar_t const *e = b;
+      while(digit(*e) != -1){
+         ++e;
+      }
+      if(e > b){
+         size_t len = (e-b-1)/BigInt::LGD_BASE[base]+1, n = len;
+         while(n != LOWBIT(n)){
+            n += LOWBIT(n);
+         }
+         res.resize(n);
+         int *di = res.data()+len-1;
+         for(int r=static_cast<int>((e-b-1)%BigInt::LGD_BASE[base])+1; r-->0; ++b){
+            *di = base**di + digit(*b);
+         }
+         while(di-- > res.data()){
+            for(int j=BigInt::LGD_BASE[base]; j-->0; ++b){
+               *di = base**di + digit(*b);
+            }
+         }
+         if(n > 1){
+            impl::bigint_change_base(res.data(), n, BigInt::BASE_CHG[base], BigInt::BASE);
+            res.trunc();
+            if(neg){
+               res.back() = -res.back();
+            }
+         }
+      }
+      if(pos != nullptr){
+         *pos = e-s;
+      }
    }
    return res;
 err_no_conversion:
@@ -804,6 +1172,8 @@ inline BigInt operator OP(BigInt &&lhs, size_t rhs){\
 DEF_SA(<<)
 DEF_SA(>>)
 #undef DEF_SA
+
+#undef LOWBIT
 
 #undef U64
 #undef I64
