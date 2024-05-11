@@ -23,8 +23,12 @@
 #define LOWBIT(N) ((N)&(~(N)+1))
 
 namespace impl{
+// Convert a[0: n-1] from base |b1| to base |b2| in-place.
+// Require
+// 1. n = 2^k for some k >= 1.
+// 2. 0 <= a[i] < |b1|.
+// 3. 1 < |b1| < |b2|.
 inline void bigint_change_base(int *a, size_t n, U32 b1, U32 b2){
-   // assert(n = 2^k for some k >= 1, 0 <= a[i] < b1 for all i, 1 < b1 < b2);
    Fft fft;
    std::vector<int> pb(n/2);
    std::vector<std::complex<double>> fa(n), fpb(n);
@@ -152,8 +156,13 @@ struct BigInt: private std::vector<int>{
          }
       }
    }
+   BigInt(unsigned long a): BigInt(static_cast<U64>(a)){}
    template<typename INT, typename = std::enable_if_t<std::is_integral_v<INT>>>
    BigInt(INT a): BigInt(static_cast<I64>(a)){}
+   std::vector<int> to_vec(){
+      std::vector<int> res = std::move(*this);
+      return res;
+   }
    explicit operator bool() const noexcept{
       return !empty();
    }
@@ -179,7 +188,7 @@ struct BigInt: private std::vector<int>{
       if(base<2 || base>36){
          throw std::out_of_range("base out of range [2, 36]");
       }
-      std::vector<int> v = vec_in_base(base);
+      std::vector<int> v = to_vec_in_base(base);
       if(v.empty()){
          return "0";
       }
@@ -230,7 +239,7 @@ struct BigInt: private std::vector<int>{
       if(base<2 || base>36){
          throw std::out_of_range("base out of range [2, 36]");
       }
-      std::vector<int> v = vec_in_base(base);
+      std::vector<int> v = to_vec_in_base(base);
       if(v.empty()){
          return L"0";
       }
@@ -265,7 +274,7 @@ struct BigInt: private std::vector<int>{
    BigInt operator+() const{
       return *this;
    }
-   BigInt &into_inv() noexcept{
+   BigInt &into_opp() noexcept{
       if(!empty()){
          back() = -back();
       }
@@ -273,7 +282,7 @@ struct BigInt: private std::vector<int>{
    }
    BigInt operator-() const{
       BigInt res = *this;
-      return res.into_inv();
+      return res.into_opp();
    }
    BigInt &into_abs() noexcept{
       if(!empty()){
@@ -297,7 +306,7 @@ struct BigInt: private std::vector<int>{
             ++back();
             if(back() == 0){
                pop_back();
-               into_inv();
+               into_opp();
             }
          }
       }else{
@@ -375,20 +384,20 @@ struct BigInt: private std::vector<int>{
             return add_std(rhs, false);
          }
          if(cmp_abs(rhs) >= 0){
-            return sub_inv(rhs, false);
+            return sub_opp(rhs, false);
          }
-         return sub_from_inv(rhs, false);
+         return sub_from_opp(rhs, false);
       }
       if(rhs.sgn() == -1){
-         return into_inv().add_std(rhs, true).into_inv();
+         return into_opp().add_std(rhs, true).into_opp();
       }
       if(cmp_abs(rhs) >= 0){
-         return into_inv().sub_inv(rhs, true).into_inv();
+         return into_opp().sub_opp(rhs, true).into_opp();
       }
-      return into_inv().sub_from_inv(rhs, true).into_inv();
+      return into_opp().sub_from_opp(rhs, true).into_opp();
    }
    BigInt &operator-=(BigInt const &rhs){
-      return (into_inv()+=rhs).into_inv();
+      return (into_opp()+=rhs).into_opp();
    }
 #define THRES_MUL 128
    BigInt &operator*=(BigInt const &rhs){
@@ -401,7 +410,7 @@ struct BigInt: private std::vector<int>{
       }
       int sign = sgn() * rhs.sgn();
       if(sgn() == -1){
-         into_inv();
+         into_opp();
       }
       if(size()<=THRES_MUL || rhs.size()<=THRES_MUL){
          naive_mul(rhs);
@@ -409,7 +418,7 @@ struct BigInt: private std::vector<int>{
          fft_mul(rhs);
       }
       if(sign == -1){
-         into_inv();
+         into_opp();
       }
       return *this;
    }
@@ -431,7 +440,7 @@ struct BigInt: private std::vector<int>{
          qr = newton_div(b);
       }
       if(rhs.sgn() == -1){
-         qr.quot.into_inv();
+         qr.quot.into_opp();
       }
       return qr;
    }
@@ -442,9 +451,12 @@ struct BigInt: private std::vector<int>{
    BigInt &operator%=(BigInt const &rhs){
       return *this = div(rhs).rem;
    }
+   BigInt &into_bitwise_not(){
+      return --into_opp();
+   }
    BigInt operator~() const{
-      BigInt res = -1;
-      return res -= *this;
+      BigInt res = *this;
+      return res.into_bitwise_not();
    }
    BigInt pow(size_t rhs) const{
       if(rhs == 0){
@@ -470,9 +482,55 @@ struct BigInt: private std::vector<int>{
       }
       return res;
    }
-   // BigInt &operator&=(BigInt const &rhs);
-   // BigInt &operator^=(BigInt const &rhs);
-   // BigInt &operator|=(BigInt const &rhs);
+   BigInt &operator&=(BigInt const &rhs){
+      if(empty()){
+         return *this;
+      }
+      if(rhs.empty()){
+         clear();
+         return *this;
+      }
+      if(size()==1 && back()==-1){
+         return *this = rhs;
+      }
+      if(rhs.size()==1 && rhs.back()==-1){
+         return *this;
+      }
+      if(*this == rhs){
+         return *this;
+      }
+      if(size() < rhs.size()){
+         BigInt res = rhs;
+         return *this = res.nontrivial_and_eq(*this);
+      }
+      return nontrivial_and_eq(rhs);
+   }
+   BigInt &operator^=(BigInt const &rhs){
+      if(empty()){
+         return *this = rhs;
+      }
+      if(rhs.empty()){
+         return *this;
+      }
+      if(size()==1 && back()==-1){
+         return *this = ~rhs;
+      }
+      if(rhs.size()==1 && rhs.back()==-1){
+         return into_bitwise_not();
+      }
+      if(*this == rhs){
+         clear();
+         return *this;
+      }
+      if(size() < rhs.size()){
+         BigInt res = rhs;
+         return *this = res.nontrivial_xor_eq(*this);
+      }
+      return nontrivial_xor_eq(rhs);
+   }
+   BigInt &operator|=(BigInt const &rhs){
+      return (into_bitwise_not() &= ~rhs).into_bitwise_not();
+   }
    BigInt &operator<<=(size_t rhs){
       if(empty()){
          return *this;
@@ -497,43 +555,6 @@ struct BigInt: private std::vector<int>{
       return *this = std::move(q);
    }
 private:
-   std::vector<int> vec_in_base(int base) const{
-      if(base==10 || empty() || (size()==1 && std::abs(data()[0])<BASE_CHG[base])){
-         return *this;
-      }
-      bool neg = false;
-      if(sgn() == -1){
-         neg = true;
-      }
-      std::vector<int> a;
-      I64 d = 0;
-      int rem = 0;
-      for(size_t i=0; i<size(); ++i){
-         d += static_cast<I64>(EXP10[rem])*std::abs(data()[i]);
-         rem += LG10_BASE;
-         while(rem >= LG10_SHRT_BASE){
-            a.push_back(d%SHRT_BASE);
-            d /= SHRT_BASE;
-            rem -= LG10_SHRT_BASE;
-         }
-      }
-      if(rem > 0){
-         a.push_back(static_cast<int>(d));
-      }
-      size_t n = a.size();
-      while(n != LOWBIT(n)){
-         n += LOWBIT(n);
-      }
-      a.resize(n);
-      impl::bigint_change_base(a.data(), n, SHRT_BASE, BASE_CHG[base]);
-      while(a.back() == 0){
-         a.pop_back();
-      }
-      if(neg){
-         a.back() = -a.back();
-      }
-      return a;
-   }
    BigInt &trunc() noexcept{
       while(!empty() && back()==0){
          pop_back();
@@ -587,7 +608,7 @@ private:
       }
       return *this;
    }
-   BigInt &sub_inv(BigInt const &rhs, bool this_inv){
+   BigInt &sub_opp(BigInt const &rhs, bool this_inv){
       for(size_t i=0; i<rhs.size()-1; ++i){
          data()[i] -= rhs[i];
          if(data()[i] < 0){
@@ -602,7 +623,7 @@ private:
       }
       return trunc();
    }
-   BigInt &sub_from_inv(BigInt const &rhs, bool this_inv){
+   BigInt &sub_from_opp(BigInt const &rhs, bool this_inv){
       resize(rhs.size());
       bool borrow = false;
       for(size_t i=0; i<size()-1; ++i){
@@ -615,7 +636,7 @@ private:
          }
       }
       back() = (this_inv? rhs.back(): -rhs.back())-back()-borrow;
-      return trunc().into_inv();
+      return trunc().into_opp();
    }
    BigInt &naive_mul(BigInt const &rhs){
       BigInt res;
@@ -715,7 +736,7 @@ private:
       if(b.size() == 1){
          int r = a.base_div_eq(b[0]);
          if(sgn() == -1){
-            a.into_inv(); r = -r;
+            a.into_opp(); r = -r;
          }
          return {std::move(a), r};
       }
@@ -766,7 +787,7 @@ private:
       }
       a.trunc().base_div_eq(c);
       if(sgn() == -1){
-         q.into_inv(); a.into_inv();
+         q.into_opp(); a.into_opp();
       }
       return {std::move(q), std::move(a)};
    }
@@ -802,26 +823,182 @@ private:
       q.erase(q.cbegin(), q.cbegin()+a.size()+1);
       BigInt r = -q;
       r *= b; r += a;
-      if(r.size()>b.size() || (r.size()==b.size() && !std::lexicographical_compare(r.crbegin(), r.crend(), b.crbegin(), b.crend()))){
+      if(r.cmp_abs(b) >= 0){
          ++q; r -= b;
       }
       r.base_div_eq(c);
       if(sgn() == -1){
-         q.into_inv(); r.into_inv();
+         q.into_opp(); r.into_opp();
       }
       return {std::move(q), std::move(r)};
    }
+   // Convert *|this| to an std::vector<int> in base |BASE_CHG[base]|.
+   // Require
+   // 1. |base| = 2, 3, ..., 9, 11, 12, ..., 36.
+   // 2. *|this| is well-formed.
+   std::vector<int> to_vec_in_base(int base) const{
+      if(empty() || (size()==1 && std::abs(data()[0])<BASE_CHG[base])){
+         return *this;
+      }
+      bool neg = false;
+      if(sgn() == -1){
+         neg = true;
+      }
+      std::vector<int> a;
+      I64 d = 0;
+      int rem = 0;
+      for(size_t i=0; i<size(); ++i){
+         d += static_cast<I64>(EXP10[rem])*std::abs(data()[i]);
+         rem += LG10_BASE;
+         while(rem >= LG10_SHRT_BASE){
+            a.push_back(d%SHRT_BASE);
+            d /= SHRT_BASE;
+            rem -= LG10_SHRT_BASE;
+         }
+      }
+      if(rem > 0){
+         a.push_back(static_cast<int>(d));
+      }
+      size_t n = a.size();
+      while(n != LOWBIT(n)){
+         n += LOWBIT(n);
+      }
+      a.resize(n);
+      impl::bigint_change_base(a.data(), n, SHRT_BASE, BASE_CHG[base]);
+      while(a.back() == 0){
+         a.pop_back();
+      }
+      if(neg){
+         a.back() = -a.back();
+      }
+      return a;
+   }
+   // Convert the sequence a[] in base |BASE_CHG[base]| to *|this|.
+   // Require
+   // 1. base = 2, 3, ..., 9, 11, 12, ..., 36.
+   // 2. 0 <= a[i] < BASE_CHG[base].
+   // Note that a.back() is allowed to be 0.
+   BigInt &from_vec_in_base(std::vector<int> &&a, int base){
+      while(!a.empty() && a.back()==0){
+         a.pop_back();
+      }
+      if(a.size() >= 2){
+         size_t n = a.size();
+         while(n != LOWBIT(n)){
+            n += LOWBIT(n);
+         }
+         a.resize(n);
+         impl::bigint_change_base(a.data(), n, BASE_CHG[base], BASE);
+         while(a.back() == 0){
+            a.pop_back();
+         }
+      }
+      *static_cast<std::vector<int>*>(this) = std::move(a);
+      return *this;
+   }
+   BigInt &nontrivial_and_eq(BigInt const &rhs){
+      if(sgn() == 1){
+         if(rhs.sgn() == 1){
+            BigInt p2 = 1ull<<63;
+            while(p2.cmp_abs(rhs) <= 0){
+               p2 *= p2;
+            }
+            *this %= p2;
+            if(empty()){
+               return *this;
+            }
+            std::vector<int> vl = to_vec_in_base(2), vr = rhs.to_vec_in_base(2);
+            size_t n = std::min(vl.size(), vr.size());
+            vl.resize(n); vr.resize(n);
+            for(size_t i=0; i<n; ++i){
+               vl[i] &= vr[i];
+            }
+            return from_vec_in_base(std::move(vl), 2);
+         }
+         BigInt r2 = ~rhs, p2 = 1ull<<63;
+         while(p2.cmp_abs(r2) <= 0){
+            p2 *= p2;
+         }
+         BigInt rem = div(p2).rem;
+         std::vector<int> vl = rem.to_vec_in_base(2), vr = r2.to_vec_in_base(2);
+         size_t n = std::min(vl.size(), vr.size());
+         for(size_t i=0; i<n; ++i){
+            vl[i] &= ~vr[i];
+         }
+         *this -= rem;
+         rem.from_vec_in_base(std::move(vl), 2);
+         return *this += rem;
+      }
+      into_bitwise_not();
+      if(rhs.sgn() == 1){
+         BigInt p2 = 1ull<<63;
+         while(p2.cmp_abs(rhs) <= 0){
+            p2 *= p2;
+         }
+         *this %= p2;
+         std::vector<int> vl = to_vec_in_base(2), vr = rhs.to_vec_in_base(2);
+         vl.resize(vr.size());
+         for(size_t i=0; i<vl.size(); ++i){
+            vl[i] = ~vl[i] & vr[i];
+         }
+         return from_vec_in_base(std::move(vl), 2);
+      }
+      BigInt r2 = ~rhs, p2 = 1ull<<63;
+      while(p2.cmp_abs(r2) <= 0){
+         p2 *= p2;
+      }
+      BigInt rem = div(p2).rem;
+      std::vector<int> vl = rem.to_vec_in_base(2), vr = r2.to_vec_in_base(2);
+      if(vl.size() < vr.size()){
+         vl.resize(vr.size());
+      }
+      for(size_t i=0; i<vr.size(); ++i){
+         vl[i] |= vr[i];
+      }
+      *this -= rem;
+      rem.from_vec_in_base(std::move(vl), 2);
+      *this += rem;
+      return into_bitwise_not();
+   }
+   BigInt &nontrivial_xor_eq(BigInt const &rhs){
+      bool rev = (sgn()==-1) ^ (rhs.sgn()==-1);
+      if(sgn() == -1){
+         into_bitwise_not();
+      }
+      BigInt r2 = rhs;
+      if(rhs.sgn() == -1){
+         r2.into_bitwise_not();
+      }
+      BigInt p2 = 1ull<<63;
+      while(p2.cmp_abs(r2) <= 0){
+         p2 *= p2;
+      }
+      BigInt rem = div(p2).rem;
+      std::vector<int> vl = to_vec_in_base(2), vr = r2.to_vec_in_base(2);
+      if(vl.size() < vr.size()){
+         vl.resize(vr.size());
+      }
+      for(size_t i=0; i<vr.size(); ++i){
+         vl[i] ^= vr[i];
+      }
+      *this -= rem;
+      rem.from_vec_in_base(std::move(vl), 2);
+      *this += rem;
+      if(rev){
+         into_bitwise_not();
+      }
+      return *this;
+   }
    friend bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept;
    friend bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept;
+   friend BigInt from_vec(std::vector<int> const &a);
+   friend BigInt from_vec(std::vector<int> &&a);
    friend BigInt stob(char const *s, size_t *pos, int base);
    friend BigInt stob(wchar_t const *s, size_t *pos, int base);
 };
 
 inline bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept{
-   if(lhs.size() != rhs.size()){
-      return false;
-   }
-   return std::memcmp(lhs.data(), rhs.data(), lhs.size()*sizeof*lhs.data()) == 0;
+   return static_cast<std::vector<int> const&>(lhs) == static_cast<std::vector<int> const&>(rhs);
 }
 
 inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
@@ -849,7 +1026,38 @@ inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{
    return std::lexicographical_compare(lhs.crbegin(), lhs.crend(), rhs.crbegin(), rhs.crend());
 }
 
+inline BigInt from_vec(std::vector<int> const &a){
+   if(a.empty()){
+      return {};
+   }
+   auto ok = [BASE=BigInt::BASE](int d){
+      return 0<=d && d<=BASE-1;
+   };
+   if(a.back()<=-BigInt::BASE || a.back()==0 || a.back()>=BigInt::BASE || !std::all_of(a.cbegin(), a.cend()-1, ok)){
+      throw std::invalid_argument("no conversion");
+   }
+   return *static_cast<BigInt const*>(&a);
+}
+
+inline BigInt from_vec(std::vector<int> &&a){
+   if(a.empty()){
+      return {};
+   }
+   auto ok = [BASE=BigInt::BASE](int d){
+      return 0<=d && d<=BASE-1;
+   };
+   if(a.back()<=-BigInt::BASE || a.back()==0 || a.back()>=BigInt::BASE || !std::all_of(a.cbegin(), a.cend()-1, ok)){
+      throw std::invalid_argument("no conversion");
+   }
+   BigInt res;
+   *static_cast<std::vector<int>*>(&res) = std::move(a);
+   return res;
+}
+
 inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
+   if(base<0 || base==1 || base>36){
+      throw std::invalid_argument("expect base = 0, 2, 3, ..., 36");
+   }
    BigInt res;
    char const *b = s;
    bool neg;
@@ -948,27 +1156,17 @@ inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
          ++e;
       }
       if(e > b){
-         size_t len = (e-b-1)/BigInt::LGD_BASE[base]+1, n = len;
-         while(n != LOWBIT(n)){
-            n += LOWBIT(n);
-         }
-         res.resize(n);
-         int *di = res.data()+len-1;
+         std::vector<int> a((e-b-1)/BigInt::LGD_BASE[base]+1);
+         int *di = a.data()+a.size()-1;
          for(int r=static_cast<int>((e-b-1)%BigInt::LGD_BASE[base])+1; r-->0; ++b){
             *di = base**di + digit(*b);
          }
-         while(di-- > res.data()){
+         while(di-- > a.data()){
             for(int j=BigInt::LGD_BASE[base]; j-->0; ++b){
                *di = base**di + digit(*b);
             }
          }
-         if(n > 1){
-            impl::bigint_change_base(res.data(), n, BigInt::BASE_CHG[base], BigInt::BASE);
-            res.trunc();
-            if(neg){
-               res.back() = -res.back();
-            }
-         }
+         res.from_vec_in_base(std::move(a), base);
       }
       if(pos != nullptr){
          *pos = e-s;
@@ -980,6 +1178,9 @@ err_no_conversion:
 }
 
 inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
+   if(base<0 || base==1 || base>36){
+      throw std::invalid_argument("expect base = 0, 2, 3, ..., 36");
+   }
    BigInt res;
    wchar_t const *b = s;
    bool neg;
@@ -1078,27 +1279,17 @@ inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
          ++e;
       }
       if(e > b){
-         size_t len = (e-b-1)/BigInt::LGD_BASE[base]+1, n = len;
-         while(n != LOWBIT(n)){
-            n += LOWBIT(n);
-         }
-         res.resize(n);
-         int *di = res.data()+len-1;
+         std::vector<int> a((e-b-1)/BigInt::LGD_BASE[base]+1);
+         int *di = a.data()+a.size()-1;
          for(int r=static_cast<int>((e-b-1)%BigInt::LGD_BASE[base])+1; r-->0; ++b){
             *di = base**di + digit(*b);
          }
-         while(di-- > res.data()){
+         while(di-- > a.data()){
             for(int j=BigInt::LGD_BASE[base]; j-->0; ++b){
                *di = base**di + digit(*b);
             }
          }
-         if(n > 1){
-            impl::bigint_change_base(res.data(), n, BigInt::BASE_CHG[base], BigInt::BASE);
-            res.trunc();
-            if(neg){
-               res.back() = -res.back();
-            }
-         }
+         res.from_vec_in_base(std::move(a), base);
       }
       if(pos != nullptr){
          *pos = e-s;
@@ -1156,9 +1347,9 @@ DEF_BIOP(-)
 DEF_BIOP(*)
 DEF_BIOP(/)
 DEF_BIOP(%)
-// DEF_BIOP(&)
-// DEF_BIOP(^)
-// DEF_BIOP(|)
+DEF_BIOP(&)
+DEF_BIOP(^)
+DEF_BIOP(|)
 #undef DEF_BIOP
 #define DEF_SA(OP)\
 inline BigInt operator OP(BigInt const &lhs, size_t rhs){\
