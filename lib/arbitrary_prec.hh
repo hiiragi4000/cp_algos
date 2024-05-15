@@ -4,16 +4,14 @@
 #include"convolution.hh"
 #include<algorithm>
 #include<array>
-#include<iomanip>
-#include<sstream>
 #include<stdexcept>
+#include<string>
 #include<type_traits>
 #include<utility>
 #include<vector>
 #include<cctype>
 #include<csignal>
 #include<cstdlib>
-#include<cstring>
 #include<cwctype>
 
 #define U32 unsigned
@@ -159,7 +157,7 @@ struct BigInt: private std::vector<int>{
    BigInt(unsigned long a): BigInt(static_cast<U64>(a)){}
    template<typename INT, typename = std::enable_if_t<std::is_integral_v<INT>>>
    BigInt(INT a): BigInt(static_cast<I64>(a)){}
-   std::vector<int> to_vec(){
+   std::vector<int> into_vec() noexcept{
       std::vector<int> res = std::move(*this);
       return res;
    }
@@ -167,23 +165,35 @@ struct BigInt: private std::vector<int>{
       return !empty();
    }
    explicit operator std::string() const{
-      std::ostringstream oss;
       if(empty()){
-         oss << '0';
-      }else{
-         oss << back() << std::setfill('0');
-         for(size_t i=size()-1; i-->0; ){
-            oss << std::setw(LG10_BASE) << data()[i];
+         return "0";
+      }
+      std::string res;
+      int t;
+      for(size_t i=0; i<size()-1; ++i){
+         t = data()[i];
+         for(int j=LG10_BASE; j-->0; ){
+            res += static_cast<char>('0'+t%10);
+            t /= 10;
          }
       }
-      return oss.str();
+      t = std::abs(back());
+      while(t > 0){
+         res += static_cast<char>('0'+t%10);
+         t /= 10;
+      }
+      if(back() < 0){
+         res += '-';
+      }
+      std::reverse(res.begin(), res.end());
+      return res;
    }
    std::string to_string() const{
-      return std::string(*this);
+      return static_cast<std::string>(*this);
    }
    std::string to_string(int base) const{
       if(base == 10){
-         return std::string(*this);
+         return static_cast<std::string>(*this);
       }
       if(base<2 || base>36){
          throw std::out_of_range("base out of range [2, 36]");
@@ -218,23 +228,35 @@ struct BigInt: private std::vector<int>{
       return res;
    }
    explicit operator std::wstring() const{
-      std::wostringstream oss;
       if(empty()){
-         oss << L'0';
-      }else{
-         oss << back() << std::setfill(L'0');
-         for(size_t i=size()-1; i-->0; ){
-            oss << std::setw(LG10_BASE) << data()[i];
+         return L"0";
+      }
+      std::wstring res;
+      int t;
+      for(size_t i=0; i<size()-1; ++i){
+         t = data()[i];
+         for(int j=LG10_BASE; j-->0; ){
+            res += static_cast<wchar_t>(L'0'+t%10);
+            t /= 10;
          }
       }
-      return oss.str();
+      t = std::abs(back());
+      while(t > 0){
+         res += static_cast<wchar_t>(L'0'+t%10);
+         t /= 10;
+      }
+      if(back() < 0){
+         res += L'-';
+      }
+      std::reverse(res.begin(), res.end());
+      return res;
    }
    std::wstring to_wstring() const{
-      return std::wstring(*this);
+      return static_cast<std::wstring>(*this);
    }
    std::wstring to_wstring(int base) const{
       if(base == 10){
-         return std::wstring(*this);
+         return static_cast<std::wstring>(*this);
       }
       if(base<2 || base>36){
          throw std::out_of_range("base out of range [2, 36]");
@@ -579,13 +601,13 @@ private:
       }
       return 0;
    }
-   BigInt &add_std(BigInt const &rhs, bool this_inv){
+   BigInt &add_std(BigInt const &rhs, bool this_opp){
       if(size() < rhs.size()){
          resize(rhs.size());
       }
       bool carry = false;
       for(size_t i=0; i<rhs.size(); ++i){
-         data()[i] += (this_inv && i==rhs.size()-1? -rhs[i]: rhs[i]) + carry;
+         data()[i] += (this_opp && i==rhs.size()-1? -rhs[i]: rhs[i]) + carry;
          if(data()[i] >= BASE){
             data()[i] -= BASE;
             carry = true;
@@ -608,7 +630,7 @@ private:
       }
       return *this;
    }
-   BigInt &sub_opp(BigInt const &rhs, bool this_inv){
+   BigInt &sub_opp(BigInt const &rhs, bool this_opp){
       for(size_t i=0; i<rhs.size()-1; ++i){
          data()[i] -= rhs[i];
          if(data()[i] < 0){
@@ -616,14 +638,14 @@ private:
             --data()[i+1];
          }
       }
-      data()[rhs.size()-1] += this_inv? -rhs.back(): rhs.back();
+      data()[rhs.size()-1] += this_opp? -rhs.back(): rhs.back();
       for(size_t i=rhs.size()-1; data()[i]<0; ++i){
          data()[i] += BASE;
          --data()[i+1];
       }
       return trunc();
    }
-   BigInt &sub_from_opp(BigInt const &rhs, bool this_inv){
+   BigInt &sub_from_opp(BigInt const &rhs, bool this_opp){
       resize(rhs.size());
       bool borrow = false;
       for(size_t i=0; i<size()-1; ++i){
@@ -635,7 +657,7 @@ private:
             borrow = false;
          }
       }
-      back() = (this_inv? rhs.back(): -rhs.back())-back()-borrow;
+      back() = (this_opp? rhs.back(): -rhs.back())-back()-borrow;
       return trunc().into_opp();
    }
    BigInt &naive_mul(BigInt const &rhs){
@@ -832,10 +854,10 @@ private:
       }
       return {std::move(q), std::move(r)};
    }
-   // Convert *|this| to an std::vector<int> in base |BASE_CHG[base]|.
+   // Convert |*this| to an std::vector<int> in base |BASE_CHG[base]|.
    // Require
    // 1. |base| = 2, 3, ..., 9, 11, 12, ..., 36.
-   // 2. *|this| is well-formed.
+   // 2. |*this| is well-formed.
    std::vector<int> to_vec_in_base(int base) const{
       if(empty() || (size()==1 && std::abs(data()[0])<BASE_CHG[base])){
          return *this;
@@ -873,12 +895,12 @@ private:
       }
       return a;
    }
-   // Convert the sequence a[] in base |BASE_CHG[base]| to *|this|.
+   // Move the sequence a[] in base |BASE_CHG[base]| to |*this|.
    // Require
    // 1. base = 2, 3, ..., 9, 11, 12, ..., 36.
    // 2. 0 <= a[i] < BASE_CHG[base].
    // Note that a.back() is allowed to be 0.
-   BigInt &from_vec_in_base(std::vector<int> &&a, int base){
+   BigInt &move_from_vec_in_base(std::vector<int> &&a, int base){
       while(!a.empty() && a.back()==0){
          a.pop_back();
       }
@@ -913,7 +935,7 @@ private:
             for(size_t i=0; i<n; ++i){
                vl[i] &= vr[i];
             }
-            return from_vec_in_base(std::move(vl), 2);
+            return move_from_vec_in_base(std::move(vl), 2);
          }
          BigInt r2 = ~rhs, p2 = 1ull<<63;
          while(p2.cmp_abs(r2) <= 0){
@@ -926,7 +948,7 @@ private:
             vl[i] &= ~vr[i];
          }
          *this -= rem;
-         rem.from_vec_in_base(std::move(vl), 2);
+         rem.move_from_vec_in_base(std::move(vl), 2);
          return *this += rem;
       }
       into_bitwise_not();
@@ -941,7 +963,7 @@ private:
          for(size_t i=0; i<vl.size(); ++i){
             vl[i] = ~vl[i] & vr[i];
          }
-         return from_vec_in_base(std::move(vl), 2);
+         return move_from_vec_in_base(std::move(vl), 2);
       }
       BigInt r2 = ~rhs, p2 = 1ull<<63;
       while(p2.cmp_abs(r2) <= 0){
@@ -956,7 +978,7 @@ private:
          vl[i] |= vr[i];
       }
       *this -= rem;
-      rem.from_vec_in_base(std::move(vl), 2);
+      rem.move_from_vec_in_base(std::move(vl), 2);
       *this += rem;
       return into_bitwise_not();
    }
@@ -982,7 +1004,7 @@ private:
          vl[i] ^= vr[i];
       }
       *this -= rem;
-      rem.from_vec_in_base(std::move(vl), 2);
+      rem.move_from_vec_in_base(std::move(vl), 2);
       *this += rem;
       if(rev){
          into_bitwise_not();
@@ -993,8 +1015,8 @@ private:
    friend bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept;
    friend BigInt from_vec(std::vector<int> const &a);
    friend BigInt from_vec(std::vector<int> &&a);
-   friend BigInt stob(char const *s, size_t *pos, int base);
-   friend BigInt stob(wchar_t const *s, size_t *pos, int base);
+   friend BigInt stobi(char const *s, size_t *pos, int base);
+   friend BigInt stobi(wchar_t const *s, size_t *pos, int base);
 };
 
 inline bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept{
@@ -1054,12 +1076,13 @@ inline BigInt from_vec(std::vector<int> &&a){
    return res;
 }
 
-inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
+inline BigInt stobi(char const *s, size_t *pos=nullptr, int base=10){
    if(base<0 || base==1 || base>36){
       throw std::invalid_argument("expect base = 0, 2, 3, ..., 36");
    }
    BigInt res;
    char const *b = s;
+   int base_bak = base;
    bool neg;
    while(std::isspace(*b)){
       ++b;
@@ -1080,18 +1103,11 @@ inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
          goto err_no_conversion;
       }
       if(*b == '0'){
-         if('0'<=b[1] && b[1]<='7'){
-            ++b;
-            base = 8;
-         }else if(b[1]=='X' || b[1]=='x'){
-            if(std::isxdigit(b[2])){
-               b += 2;
-               base = 16;
-            }else{
-               base = 10;
-            }
+         if((b[1]=='X' || b[1]=='x') && std::isxdigit(b[2])){
+            b += 2;
+            base = 16;
          }else{
-            base = 10;
+            base = 8;
          }
       }else{
          base = 10;
@@ -1148,6 +1164,9 @@ inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
       if(digit(*b) == -1){
          goto err_no_conversion;
       }
+      if(base_bak==16 && b[0]=='0' && (b[1]=='X' || b[1]=='x') && std::isxdigit(b[2])){
+         b += 2;
+      }
       while(*b == '0'){
          ++b;
       }
@@ -1166,7 +1185,7 @@ inline BigInt stob(char const *s, size_t *pos=nullptr, int base=10){
                *di = base**di + digit(*b);
             }
          }
-         res.from_vec_in_base(std::move(a), base);
+         res.move_from_vec_in_base(std::move(a), base);
       }
       if(pos != nullptr){
          *pos = e-s;
@@ -1177,12 +1196,13 @@ err_no_conversion:
    throw std::invalid_argument("no conversion");
 }
 
-inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
+inline BigInt stobi(wchar_t const *s, size_t *pos=nullptr, int base=10){
    if(base<0 || base==1 || base>36){
       throw std::invalid_argument("expect base = 0, 2, 3, ..., 36");
    }
    BigInt res;
    wchar_t const *b = s;
+   int base_bak = base;
    bool neg;
    while(std::iswspace(*b)){
       ++b;
@@ -1203,18 +1223,11 @@ inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
          goto err_no_conversion;
       }
       if(*b == L'0'){
-         if(L'0'<=b[1] && b[1]<=L'7'){
-            ++b;
-            base = 8;
-         }else if(b[1]==L'X' || b[1]==L'x'){
-            if(std::iswxdigit(b[2])){
-               b += 2;
-               base = 16;
-            }else{
-               base = 10;
-            }
+         if((b[1]==L'X' || b[1]==L'x') && std::iswxdigit(b[2])){
+            b += 2;
+            base = 16;
          }else{
-            base = 10;
+            base = 8;
          }
       }else{
          base = 10;
@@ -1271,6 +1284,9 @@ inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
       if(digit(*b) == -1){
          goto err_no_conversion;
       }
+      if(base_bak==16 && b[0]==L'0' && (b[1]==L'X' || b[1]==L'x') && std::iswxdigit(b[2])){
+         b += 2;
+      }
       while(*b == L'0'){
          ++b;
       }
@@ -1289,7 +1305,7 @@ inline BigInt stob(wchar_t const *s, size_t *pos=nullptr, int base=10){
                *di = base**di + digit(*b);
             }
          }
-         res.from_vec_in_base(std::move(a), base);
+         res.move_from_vec_in_base(std::move(a), base);
       }
       if(pos != nullptr){
          *pos = e-s;
@@ -1300,7 +1316,16 @@ err_no_conversion:
    throw std::invalid_argument("no conversion");
 }
 
-inline BigInt sgn(BigInt const &a){
+namespace std{
+inline string to_string(BigInt const &a){
+   return static_cast<string>(a);
+}
+inline wstring to_wstring(BigInt const &a){
+   return static_cast<std::wstring>(a);
+}
+}
+
+inline BigInt sgn(BigInt const &a) noexcept{
    return a.sgn();
 }
 
@@ -1309,7 +1334,7 @@ inline BigInt abs(BigInt const &a){
    return res.into_abs();
 }
 
-inline BigInt abs(BigInt &&a){
+inline BigInt abs(BigInt &&a) noexcept{
    return a.into_abs();
 }
 

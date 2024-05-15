@@ -11,7 +11,7 @@ int main(){
    while(T-- > 0){
       string sa, sb;
       cin >> sa >> sb;
-      BigInt a = stob(sa.data()), b = stob(sb.data());
+      BigInt a = stobi(sa.data()), b = stobi(sb.data());
       // DivT<BigInt> div(BigInt const &a, BigInt const &b):
       // Computes both the quotient |quot| and the remainder |rem| of the division of the numerator |a| by the denominator |b|.
       // If |b| = 0, raises SIGFPE.

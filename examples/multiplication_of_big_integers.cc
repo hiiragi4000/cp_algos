@@ -11,7 +11,7 @@ int main(){
    while(T-- > 0){
       string sa, sb;
       cin >> sa >> sb;
-      BigInt a = stob(sa.data()), b = stob(sb.data());
+      BigInt a = stobi(sa.data()), b = stobi(sb.data());
       puts(string(a*b).data());
    }
 }
