@@ -1020,7 +1020,7 @@ private:
 };
 
 inline bool operator==(BigInt const &lhs, BigInt const &rhs) noexcept{
-   return static_cast<std::vector<int> const&>(lhs) == static_cast<std::vector<int> const&>(rhs);
+   return *static_cast<std::vector<int> const*>(&lhs) == *static_cast<std::vector<int> const*>(&rhs);
 }
 
 inline bool operator<(BigInt const &lhs, BigInt const &rhs) noexcept{

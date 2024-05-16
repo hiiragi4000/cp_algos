@@ -4,16 +4,23 @@
 #include<algorithm>
 #include<stdexcept>
 #include<string>
-#include<cctype>
-#ifdef _MSC_BUILD
 #include<type_traits>
+#include<cctype>
 #include<climits>
+#include<cwctype>
+
+#ifdef _MSC_BUILD
 #include<intrin.h>
 #endif
 
 #define U8 unsigned char
 #define I64 long long
 #define U64 unsigned long long
+
+static_assert(
+   CHAR_BIT==8 && (-1&3)==3 && -1>>1==-1 && sizeof(int)==4 && sizeof(I64)==8,
+   "We're not ready to handle exotic platforms"
+);
 
 #ifdef _MSC_BUILD
 #define DEF_TYPE(T)\
@@ -91,17 +98,16 @@
       return *this;\
    }\
    constexpr T &operator<<=(U8 shift) noexcept{\
-      switch(shift>>6){\
-      case 0:\
-         hi = __shiftleft128(lo, hi, shift);\
+      if(shift == 0){\
+         ; /*null statement*/\
+      }else if(shift>>6 == 0){\
+         hi = hi<<shift | lo>>(64-shift);\
          lo <<= shift;\
-         break;\
-      case 1:\
-         hi = lo << (shift & 0x3F);\
+      }else if(shift>>6 == 1){\
+         hi = lo << (shift&63);\
          lo = 0;\
-         break;\
-      default:\
-         lo = hi = 0;\
+      }else{\
+         hi = lo = 0;\
       }\
       return *this;\
    }
@@ -109,16 +115,15 @@ struct i128;
 struct u128{
    DEF_TYPE(u128)
    constexpr u128 &operator>>=(U8 shift) noexcept{
-      switch(shift>>6){
-      case 0:
-         lo = __shiftright128(lo, hi, shift);
+      if(shift == 0){
+         ; // null statement
+      }else if(shift>>6 == 0){
+         lo = ((hi&((1ull<<shift)-1))<<(64-shift)) | (lo>>shift);
          hi >>= shift;
-         break;
-      case 1:
-         lo = hi >> (shift & 0x3F);
+      }else if(shift>>6 == 1){
+         lo = hi >> (shift&63);
          hi = 0;
-         break;
-      default:
+      }else{
          lo = hi = 0;
       }
       return *this;
@@ -128,16 +133,16 @@ struct u128{
 struct i128{
    DEF_TYPE(i128)
    constexpr i128 &operator>>=(U8 shift) noexcept{
-      switch(shift>>6){
-      case 0:
-         lo = __shiftright128(lo, hi, shift);
-         hi >>= shift;
-         break;
-      case 1:
-         lo = hi >> (shift & 0x3F);
-         hi = -(hi>LLONG_MAX);
-      default:
-         lo = hi = -(hi>LLONG_MAX);
+      if(shift == 0){
+         ; // null statement
+      }else if(shift>>6 == 0){
+         lo = ((hi&((1ull<<shift)-1))<<(64-shift)) | (lo>>shift);
+         *reinterpret_cast<I64*>(&hi) >>= shift;
+      }else if(shift>>6 == 1){
+         lo = *reinterpret_cast<I64*>(&hi) >> (shift&63);
+         *reinterpret_cast<I64*>(&hi) = -(*reinterpret_cast<I64*>(&hi) < 0);
+      }else{
+         *reinterpret_cast<I64*>(&lo) = *reinterpret_cast<I64*>(&hi) = -(*reinterpret_cast<I64*>(&hi) < 0);
       }
       return *this;
    }
@@ -147,12 +152,13 @@ struct i128{
       return res;
    }
 };
-#undef DEF_TYPE
 constexpr u128::operator i128() const noexcept{
    i128 res;
    res.lo = lo; res.hi = hi;
    return res;
 }
+#undef DEF_TYPE
+
 #define DEF_BIOP(T, OP)\
 constexpr T operator OP(T lhs, T const &rhs) noexcept{\
    return lhs OP##= rhs;\
@@ -168,6 +174,7 @@ DEF_BIOP(i128, &)
 DEF_BIOP(i128, ^)
 DEF_BIOP(i128, |)
 #undef DEF_BIOP
+
 constexpr u128 operator<<(u128 self, U8 shift) noexcept{
    return self <<= shift;
 }
@@ -180,6 +187,7 @@ constexpr i128 operator<<(i128 self, U8 shift) noexcept{
 constexpr i128 operator>>(i128 self, U8 shift) noexcept{
    return self >>= shift;
 }
+
 constexpr bool operator==(u128 const &lhs, u128 const &rhs) noexcept{
    return lhs.lo==rhs.lo && lhs.hi==rhs.hi;
 }
@@ -192,6 +200,7 @@ constexpr bool operator==(i128 const &lhs, i128 const &rhs) noexcept{
 constexpr bool operator!=(i128 const &lhs, i128 const &rhs) noexcept{
    return lhs.lo!=rhs.lo || lhs.hi!=rhs.hi;
 }
+
 #define DEF_U128_CMP(OP)\
 constexpr bool operator OP(u128 const &lhs, u128 const &rhs) noexcept{\
    return lhs.hi==rhs.hi? lhs.lo OP rhs.lo: lhs.hi OP rhs.hi;\
@@ -201,6 +210,7 @@ DEF_U128_CMP(<=)
 DEF_U128_CMP(>)
 DEF_U128_CMP(>=)
 #undef DEF_U128_CMP
+
 #define DEF_I128_CMP(OP)\
 constexpr bool operator OP(i128 const &lhs, i128 const &rhs) noexcept{\
    constexpr U64 sign_bit = 0x8000'0000'0000'0000;\
@@ -220,41 +230,11 @@ DEF_I128_CMP(<=)
 DEF_I128_CMP(>)
 DEF_I128_CMP(>=)
 #undef DEF_I128_CMP
+
 #else // !defined(_MSC_BUILD)
 using u128 = __uint128_t;
 using i128 = __int128_t;
 #endif
-
-inline u128 &u128_mul_eq_u64(u128 &self, U64 m){
-#ifdef _MSC_BUILD
-   U64 carry;
-   self.lo = _umul128(self.lo, m, &carry);
-   self.hi = self.hi*m + carry;
-#else
-   self *= m;
-#endif
-   return self;
-}
-
-inline u128 &u128_div_eq_u64(u128 &self, U64 m, U64 *r=nullptr){
-#ifdef _MSC_BUILD
-   if(r != nullptr){
-      *r = self.hi % m;
-      self.hi /= m;
-      self.lo = _udiv128(*r, self.lo, m, r);
-   }else{
-      U64 rem = self.hi % m;
-      self.hi /= m;
-      self.lo = _udiv128(rem, self.lo, m, &rem);
-   }
-#else
-   if(r != nullptr){
-      *r = self % m;
-   }
-   self /= m;
-#endif
-   return self;
-}
 
 struct u64div_t{
    U64 quot, rem;
@@ -288,11 +268,43 @@ inline i64div_t i64_mul_div(I64 a, I64 b, I64 m){
    return res;
 }
 
-#define DEF_STO128(S) inline S##128 sto##S##128(char const *s, size_t *pos=nullptr, int base=10){\
+namespace impl{
+inline u128 &u128_mul_eq_u64(u128 &self, U64 m){
+#ifdef _MSC_BUILD
+   U64 carry;
+   self.lo = _umul128(self.lo, m, &carry);
+   self.hi = self.hi*m + carry;
+#else
+   self *= m;
+#endif
+   return self;
+}
+inline u128 &u128_div_eq_u64(u128 &self, U64 m, U64 *r=nullptr){
+#ifdef _MSC_BUILD
+   if(r != nullptr){
+      *r = self.hi % m;
+      self.hi /= m;
+      self.lo = _udiv128(*r, self.lo, m, r);
+   }else{
+      U64 rem = self.hi % m;
+      self.hi /= m;
+      self.lo = _udiv128(rem, self.lo, m, &rem);
+   }
+#else
+   if(r != nullptr){
+      *r = self % m;
+   }
+   self /= m;
+#endif
+   return self;
+}
+} // namespace impl
+
+#define DEF_STOI(T) inline T sto##T(char const *s, size_t *pos=nullptr, int base=10){\
    if(base<0 || base==1 || base>36){\
       throw std::invalid_argument("expect base = 0, 2, 3, ..., 36");\
    }\
-   S##128 res = 0;\
+   T res = 0;\
    char const *p = s;\
    int base_bak = base;\
    bool neg;\
@@ -355,7 +367,7 @@ inline i64div_t i64_mul_div(I64 a, I64 b, I64 m){
             break;\
          }\
          /*As i128 and u128 share the same structure, the reinterpret_cast is safe.*/\
-         u128_mul_eq_u64(*reinterpret_cast<u128*>(&res), base);\
+         impl::u128_mul_eq_u64(*reinterpret_cast<u128*>(&res), base);\
          res += (neg? -d: d);\
       }\
    }\
@@ -366,20 +378,116 @@ inline i64div_t i64_mul_div(I64 a, I64 b, I64 m){
 err_no_conversion:\
    throw std::invalid_argument("no conversion");\
 }
-DEF_STO128(u)
-DEF_STO128(i)
-#undef DEF_STO128
+DEF_STOI(u128)
+DEF_STOI(i128)
+#undef DEF_STOI
+
+#define DEF_WSTOI(T) inline T sto##T(wchar_t const *s, size_t *pos=nullptr, int base=10){\
+   if(base<0 || base==1 || base>36){\
+      throw std::invalid_argument("expect base = 0, 2, 3, ..., 36");\
+   }\
+   T res = 0;\
+   wchar_t const *p = s;\
+   int base_bak = base;\
+   bool neg;\
+   while(std::iswspace(*p)){\
+      ++p;\
+   }\
+   neg = false;\
+   for(; ; ++p){\
+      if(*p == L'+'){\
+         continue;\
+      }\
+      if(*p == L'-'){\
+         neg = !neg;\
+         continue;\
+      }\
+      break;\
+   }\
+   if(base == 0){\
+      if(!std::iswdigit(*p)){\
+         goto err_no_conversion;\
+      }\
+      if(*p == L'0'){\
+         if((p[1]==L'X' || p[1]==L'x') && std::iswxdigit(p[2])){\
+            p += 2;\
+            base = 16;\
+         }else{\
+            base = 8;\
+         }\
+      }else{\
+         base = 10;\
+      }\
+   }{\
+      auto digit = [base](wchar_t c){\
+         if(base > 10){\
+            if(std::iswdigit(c)){\
+               return c-L'0';\
+            }\
+            if(L'A'<=c && c<L'A'+(base-10)){\
+               return c-L'A'+10;\
+            }\
+            if(L'a'<=c && c<L'a'+(base-10)){\
+               return c-L'a'+10;\
+            }\
+            return -1;\
+         }\
+         if(L'0'<=c && c<L'0'+base){\
+            return c-L'0';\
+         }\
+         return -1;\
+      };\
+      if(digit(*p) == -1){\
+         goto err_no_conversion;\
+      }\
+      if(base_bak==16 && p[0]==L'0' && (p[1]==L'X' || p[1]==L'x') && std::iswxdigit(p[2])){\
+         p += 2;\
+      }\
+      for(; ; ++p){\
+         int d = digit(*p);\
+         if(d == -1){\
+            break;\
+         }\
+         /*As i128 and u128 share the same structure, the reinterpret_cast is safe.*/\
+         impl::u128_mul_eq_u64(*reinterpret_cast<u128*>(&res), base);\
+         res += (neg? -d: d);\
+      }\
+   }\
+   if(pos != nullptr){\
+      *pos = p-s;\
+   }\
+   return res;\
+err_no_conversion:\
+   throw std::invalid_argument("no conversion");\
+}
+DEF_WSTOI(u128)
+DEF_WSTOI(i128)
+#undef DEF_WSTOI
 
 namespace std{
 inline string to_string(u128 value){
    string res;
    while(value){
       U64 d;
-      u128_div_eq_u64(value, 10, &d);
+      impl::u128_div_eq_u64(value, 10, &d);
       res += static_cast<char>('0'+d);
    }
    if(res.empty()){
       res = "0";
+   }else{
+      reverse(res.begin(), res.end());
+   }
+   return res;
+}
+inline wstring to_wstring(u128 value){
+   wstring res;
+   while(value){
+      U64 d;
+      impl::u128_div_eq_u64(value, 10, &d);
+      res += static_cast<wchar_t>(L'0'+d);
+   }
+   if(res.empty()){
+      res = L"0";
    }else{
       reverse(res.begin(), res.end());
    }
@@ -390,7 +498,7 @@ inline string to_string(i128 value){
    if(value >= 0){
       while(value){
          U64 d;
-         u128_div_eq_u64(*reinterpret_cast<u128*>(&value), 10, &d);
+         impl::u128_div_eq_u64(*reinterpret_cast<u128*>(&value), 10, &d);
          res += static_cast<char>('0'+d);
       }
       if(res.empty()){
@@ -401,10 +509,34 @@ inline string to_string(i128 value){
       value = static_cast<i128>(-*reinterpret_cast<u128*>(&value));
       while(value){
          U64 d;
-         u128_div_eq_u64(*reinterpret_cast<u128*>(&value), 10, &d);
+         impl::u128_div_eq_u64(*reinterpret_cast<u128*>(&value), 10, &d);
          res += static_cast<char>('0'+d);
       }
       res += '-';
+   }
+   reverse(res.begin(), res.end());
+   return res;
+}
+inline wstring to_wstring(i128 value){
+   wstring res;
+   if(value >= 0){
+      while(value){
+         U64 d;
+         impl::u128_div_eq_u64(*reinterpret_cast<u128*>(&value), 10, &d);
+         res += static_cast<wchar_t>(L'0'+d);
+      }
+      if(res.empty()){
+         res = L"0";
+      }
+   }else{
+      // As -i128::MIN = i128::MIN = 2^127, the negation is safe.
+      value = static_cast<i128>(-*reinterpret_cast<u128*>(&value));
+      while(value){
+         U64 d;
+         impl::u128_div_eq_u64(*reinterpret_cast<u128*>(&value), 10, &d);
+         res += static_cast<wchar_t>(L'0'+d);
+      }
+      res += L'-';
    }
    reverse(res.begin(), res.end());
    return res;
