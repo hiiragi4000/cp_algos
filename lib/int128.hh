@@ -19,7 +19,7 @@
 
 static_assert(
    CHAR_BIT==8 && (-1&3)==3 && -1>>1==-1 && sizeof(int)==4 && sizeof(I64)==8,
-   "We're not ready to handle exotic platforms"
+   "We're not ready to handle exotic platforms QQ"
 );
 
 #ifdef _MSC_BUILD
@@ -28,6 +28,7 @@ static_assert(
    T() = default;\
    template<typename INT, typename = std::enable_if_t<std::is_integral_v<INT>>>\
    constexpr T(INT a) noexcept: lo(a), hi(-(a<0)){}\
+   constexpr T(U64 a, U64 b) noexcept: lo(a), hi(b){}\
    explicit constexpr operator bool() const noexcept{\
       return lo || hi;\
    }\
@@ -147,15 +148,11 @@ struct i128{
       return *this;
    }
    explicit constexpr operator u128() const noexcept{
-      u128 res;
-      res.lo = lo; res.hi = hi;
-      return res;
+      return u128(lo, hi);
    }
 };
 constexpr u128::operator i128() const noexcept{
-   i128 res;
-   res.lo = lo; res.hi = hi;
-   return res;
+   return i128(lo, hi);
 }
 #undef DEF_TYPE
 
@@ -235,6 +232,80 @@ DEF_I128_CMP(>=)
 using u128 = __uint128_t;
 using i128 = __int128_t;
 #endif
+
+namespace impl{
+constexpr int u64_mul_10_carry(U64 a) noexcept{
+   constexpr U64 u = ULLONG_MAX/5;
+   int res = a>>63? 5: 0;
+   a &= LLONG_MAX;
+   if(a <= u){
+      res += a > u/2;
+   }else if(a <= u+u/2){
+      res += 2;
+   }else if(a <= 2*u){
+      res += 3;
+   }else{
+      res += 4;
+   }
+   return res;
+}
+constexpr u128 &u128_mul_eq_base(u128 &self, int base) noexcept{
+#ifdef _MSC_BUILD
+   if(base == 2){
+      self <<= 1;
+   }else if(base == 8){
+      self <<= 3;
+   }else if(base == 16){
+      self <<= 4;
+   }else{
+      int carry = u64_mul_10_carry(self.lo);
+      self.lo *= 10;
+      self.hi = 10*self.hi + carry;
+   }
+#else
+   self *= base;
+#endif
+   return self;
+}
+} // namespace impl
+
+#define DEF_LITERAL(T)\
+T operator""_##T(long double) = delete;\
+constexpr T operator""_##T(char const *s) noexcept{\
+   int base = 10;\
+   if(*s == '0'){\
+      if('0'<=s[1] && s[1]<='7'){\
+         base = 8;\
+         ++s;\
+      }else if(s[1]=='B' || s[1]=='b'){\
+         base = 2;\
+         s += 2;\
+      }else{\
+         base = 16;\
+         s += 2;\
+      }\
+   }\
+   T res = 0;\
+   auto char_to_digit = [](char c){\
+      if(c <= '9'){\
+         return c-'0';\
+      }\
+      if(c <= 'F'){\
+         return c-'A'+10;\
+      }\
+      return c-'a'+10;\
+   };\
+   for(; *s; ++s){\
+      if(*s == '\''){\
+         continue;\
+      }\
+      impl::u128_mul_eq_base(*reinterpret_cast<u128*>(&res), base) += char_to_digit(*s);\
+   }\
+   return res;\
+}
+DEF_LITERAL(u128)
+DEF_LITERAL(i128)
+#undef DEF_LITERAL
 
 struct u64div_t{
    U64 quot, rem;
@@ -448,7 +519,6 @@ DEF_STOI(i128)
          if(d == -1){\
             break;\
          }\
-         /*As i128 and u128 share the same structure, the reinterpret_cast is safe.*/\
          impl::u128_mul_eq_u64(*reinterpret_cast<u128*>(&res), base);\
          res += (neg? -d: d);\
       }\
