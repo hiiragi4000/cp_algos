@@ -1,6 +1,7 @@
 #ifndef INT128_HH
 #define INT128_HH
 
+#include"assert_platform.hh"
 #include<algorithm>
 #include<stdexcept>
 #include<string>
@@ -16,11 +17,6 @@
 #define U8 unsigned char
 #define I64 long long
 #define U64 unsigned long long
-
-static_assert(
-   CHAR_BIT==8 && (-1&3)==3 && -1>>1==-1 && sizeof(int)==4 && sizeof(I64)==8,
-   "We're not ready to handle exotic platforms QQ"
-);
 
 #ifdef _MSC_BUILD
 #define DEF_TYPE(T)\

@@ -1,8 +1,8 @@
 #ifndef NUMBER_THEORY_HH
 #define NUMBER_THEORY_HH
 
+#include"assert_platform.hh"
 #include<array>
-#include<functional>
 #include<limits>
 #include<numeric>
 #include<ostream>
@@ -10,99 +10,161 @@
 #include<unordered_map>
 #include<utility>
 #include<vector>
+#include<climits>
 #include<cmath>
 
 #define I8 signed char
+#define U8 unsigned char
 #define U32 unsigned
 #define I64 long long
 #define U64 unsigned long long
 
-struct PrimeEnumerator{
-   static std::pair<std::vector<int>, std::function<bool(int)>> leq(int n){
-      // assert(n >= 0);
-      int b = n/30+1;
-      std::vector<bool> isp(b<<3, true);
-      std::vector<int> primes{2, 3, 5};
-      primes.reserve(static_cast<size_t>(UB*30*b/std::log(30*b)));
-      isp[0] = false;
-      for(int i=0; i<b; ++i){
-         for(int j=0; j<8; ++j){
-            I64 d = 30ll*i + r[j];
-            if(d == 1) continue;
-            if(isp[i<<3|j]) primes.push_back(static_cast<int>(d));
-            for(int k=3; ; ++k){
-               I64 pd = primes[k]*d;
-               if(pd >= 30*b) break;
-               isp[pd/30<<3|rinv[pd%30]] = false;
-               if(d%primes[k] == 0) break;
-            }
-         }
-      }
-      while(!primes.empty() && primes.back()>n){
-         primes.pop_back();
-      }
-      auto is_prime = [isp=move(isp)](int i){
-         if(i <= 1) return false;
-         if(i==2 || i==3 || i==5) return true;
-         if(i%2==0 || i%3==0 || i%5==0) return false;
-         return static_cast<bool>(isp[i/30<<3|rinv[i%30]]);
-      };
-      return {primes, is_prime};
-   }
-private:
-   static constexpr int r[] = {1, 7, 11, 13, 17, 19, 23, 29};
-   static constexpr I8 rinv[] = {
-      -1,  0, -1, -1, -1, -1, -1,  1, -1, -1,
-      -1,  2, -1,  3, -1, -1, -1,  4, -1,  5,
-      -1, -1, -1,  6, -1, -1, -1, -1, -1,  7
-   };
-   static constexpr double UB = 1.25506;
+struct IsprimePrimePair{
+   std::vector<U8> isprime;
+   std::vector<int> prime;
 };
 
-inline std::vector<int> phi_table_leq(int n){
-   // assert(n >= -1);
-   std::vector<int> phi(n+1u);
-   std::vector<int> primes;
-   iota(phi.begin(), phi.end(), 0u);
-   for(I64 i=2; i<=n; ++i){
-      if(phi[i] == i){
-         --phi[i];
-         primes.push_back(static_cast<int>(i));
+inline IsprimePrimePair isprime_prime_pair(int n){
+   if(n <= 0){
+      return {};
+   }
+   if(n == 1){
+      return {{false}, {}};
+   }
+   std::vector<U8> inp(n, true);
+   inp[0] = inp[1] = false;
+   std::vector<int> p;
+   for(int i=2; i<=n-1; ++i){
+      if(inp[i]){
+         p.push_back(i);
       }
-      for(int p: primes){
-         if(p*i > n) break;
-         if(i%p){
-            phi[p*i] = (p-1)*phi[i];
-         }else{
-            phi[p*i] = p*phi[i];
+      for(int pj: p){
+         I64 m = static_cast<I64>(i)*pj;
+         if(m >= n){
+            break;
+         }
+         inp[m] = false;
+         if(i%pj == 0){
             break;
          }
       }
    }
-   return phi;
+   return {std::move(inp), std::move(p)};
 }
 
-inline std::vector<I8> mu_table_leq(int n){
-   // assert(n >= 1);
-   std::vector<I8> mu(n+1u, -2);
-   std::vector<int> primes;
-   mu[0] = 0; mu[1] = 1;
-   for(I64 i=2; i<=n; ++i){
-      if(mu[i] == -2){
-         mu[i] = -1;
-         primes.push_back(static_cast<int>(i));
+inline std::vector<U8> isprime_table(int n){
+   return isprime_prime_pair(n).isprime;
+}
+
+inline std::vector<int> prime_list(int n){
+   return isprime_prime_pair(n).prime;
+}
+
+struct PhiPrimePair{
+   std::vector<int> phi, prime;
+};
+
+inline PhiPrimePair phi_prime_pair(int n){
+   if(n <= 0){
+      return {};
+   }
+   std::vector<int> phi(n);
+   std::iota(phi.begin(), phi.end(), 0);
+   std::vector<int> p;
+   for(int i=2; i<=n-1; ++i){
+      if(phi[i] == i){
+         --phi[i];
+         p.push_back(i);
       }
-      for(int p: primes){
-         if(p*i > n) break;
-         if(i%p){
-            mu[p*i] = -mu[i];
-         }else{
-            mu[p*i] = 0;
+      for(int pj: p){
+         I64 m = static_cast<I64>(i)*pj;
+         if(m >= n){
             break;
          }
+         if(i%pj == 0){
+            phi[m] = pj*phi[i];
+            break;
+         }
+         phi[m] = (pj-1)*phi[i];
       }
    }
-   return mu;
+   return {std::move(phi), std::move(p)};
+}
+
+inline std::vector<int> phi_table(int n){
+   return phi_prime_pair(n).phi;
+}
+
+constexpr U64 euler_phi(U64 n) noexcept{
+   U64 res = n;
+   for(U64 i=2; i<=UINT_MAX && i*i<=n; ++i){
+      if(n%i == 0){
+         res = res/i*(i-1);
+         do{
+            n /= i;
+         }while(n%i == 0);
+      }
+   }
+   if(n > 1){
+      res = res/n*(n-1);
+   }
+   return res;
+}
+
+struct MuPrimePair{
+   std::vector<I8> mu;
+   std::vector<int> prime;
+};
+
+inline MuPrimePair mu_prime_pair(int n){
+   if(n <= 0){
+      return {};
+   }
+   if(n == 1){
+      return {{0}, {}};
+   }
+   std::vector<I8> mu(n, -2);
+   mu[1] = 1;
+   std::vector<int> p;
+   for(int i=2; i<=n-1; ++i){
+      if(mu[i] == -2){
+         mu[i] = -1;
+         p.push_back(i);
+      }
+      for(int pj: p){
+         I64 m = static_cast<I64>(i)*pj;
+         if(m >= n){
+            break;
+         }
+         if(i%pj == 0){
+            mu[m] = 0;
+            break;
+         }
+         mu[m] = -mu[i];
+      }
+   }
+   return {std::move(mu), std::move(p)};
+}
+
+inline std::vector<I8> mu_table(int n){
+   return mu_prime_pair(n).mu;
+}
+
+constexpr int moebius_mu(U64 n) noexcept{
+   int res = 1;
+   for(U64 i=2; i<=UINT_MAX && i*i<=n; ++i){
+      if(n%i == 0){
+         n /= i;
+         if(n%i == 0){
+            return 0;
+         }
+         res = -res;
+      }
+   }
+   if(n > 1){
+      res = -res;
+   }
+   return res;
 }
 
 constexpr std::array<I64, 2> extgcd(I64 a, I64 b){
@@ -345,6 +407,7 @@ template<U32 N> struct RingZnMod<RingZn<N>>: std::integral_constant<U32, N>{};
 #undef U64
 #undef I64
 #undef U32
+#undef U8
 #undef I8
 
 #endif // NUMBER_THEORY_HH
