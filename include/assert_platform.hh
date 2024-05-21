@@ -2,6 +2,7 @@
 #define ASSERT_PLATFORM_HH
 
 #include<climits>
+#include<cstdlib>
 
 #if CHAR_BIT != 8
 #error "We're not ready for platforms whose char size is other than 8 QQ"
@@ -25,5 +26,24 @@ static_assert(
 
 #undef I64
 #undef I16
+
+#define U8 unsigned char
+#define U32 unsigned
+
+namespace impl{
+struct AssertLittleEndian{
+   AssertLittleEndian(){
+      U32 buf = 0x01020304;
+      U8 *p = reinterpret_cast<U8*>(&buf);
+      if(p[0]!=4 || p[1]!=3 || p[2]!=2 || p[3]!=1){
+         std::abort();
+      }
+   }
+};
+inline AssertLittleEndian assert_little_endian;
+}
+
+#undef U32
+#undef U8
 
 #endif // ASSERT_PLATFORM_HH

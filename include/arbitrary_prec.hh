@@ -2,6 +2,7 @@
 #define ARBITRARY_PREC_HH
 
 #include"convolution.hh"
+#include"util.hh"
 #include<algorithm>
 #include<array>
 #include<stdexcept>
@@ -90,10 +91,6 @@ inline void bigint_change_base(int *a, size_t n, U32 b1, U32 b2){
    }
 }
 } // namespace impl
-
-template<typename T> struct DivT{
-   T quot, rem;
-};
 
 struct BigInt: private std::vector<int>{
    constexpr static int BASE = 100'000'000;

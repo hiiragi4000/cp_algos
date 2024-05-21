@@ -2,6 +2,7 @@
 #define INT128_HH
 
 #include"assert_platform.hh"
+#include"util.hh"
 #include<algorithm>
 #include<stdexcept>
 #include<string>
@@ -15,6 +16,7 @@
 #endif
 
 #define U8 unsigned char
+#define U32 unsigned
 #define I64 long long
 #define U64 unsigned long long
 
@@ -79,6 +81,7 @@
       hi -= rhs.hi + (lo>lo_bak);\
       return *this;\
    }\
+   constexpr T &operator*=(T const &rhs) noexcept;\
    constexpr T &operator&=(T const &rhs) noexcept{\
       lo &= rhs.lo;\
       hi &= rhs.hi;\
@@ -130,16 +133,17 @@ struct u128{
 struct i128{
    DEF_TYPE(i128)
    constexpr i128 &operator>>=(U8 shift) noexcept{
+      constexpr U64 sign_bit = 0x8000'0000'0000'0000;
       if(shift == 0){
          ; // null statement
       }else if(shift>>6 == 0){
          lo = ((hi&((1ull<<shift)-1))<<(64-shift)) | (lo>>shift);
-         *reinterpret_cast<I64*>(&hi) >>= shift;
+         hi = static_cast<U64>(static_cast<I64>(hi)>>shift);
       }else if(shift>>6 == 1){
-         lo = *reinterpret_cast<I64*>(&hi) >> (shift&63);
-         *reinterpret_cast<I64*>(&hi) = -(*reinterpret_cast<I64*>(&hi) < 0);
+         lo = static_cast<U64>(static_cast<I64>(hi)>>(shift&63));
+         hi = (hi&sign_bit)? -1: 0;
       }else{
-         *reinterpret_cast<I64*>(&lo) = *reinterpret_cast<I64*>(&hi) = -(*reinterpret_cast<I64*>(&hi) < 0);
+         lo = hi = (hi&sign_bit)? -1: 0;
       }
       return *this;
    }
@@ -214,7 +218,7 @@ constexpr bool operator OP(i128 const &lhs, i128 const &rhs) noexcept{\
       return lhs.hi==rhs.hi? lhs.lo OP rhs.lo: lhs.hi OP rhs.hi;\
    }\
    if(rhs.hi & sign_bit){\
-      return -1 OP 0;\
+      return 0 OP -1;\
    }\
    return lhs.hi==rhs.hi? lhs.lo OP rhs.lo: lhs.hi OP rhs.hi;\
 }
@@ -223,10 +227,45 @@ DEF_I128_CMP(<=)
 DEF_I128_CMP(>)
 DEF_I128_CMP(>=)
 #undef DEF_I128_CMP
+static_assert(std::is_standard_layout_v<u128>, "u128 is not of standard layout QQ");
+static_assert(std::is_standard_layout_v<i128>, "i128 is not of standard layout QQ");
 
 #else // !defined(_MSC_BUILD)
 using u128 = __uint128_t;
 using i128 = __int128_t;
+#endif
+
+constexpr u128 c_mul128(U64 a, U64 b) noexcept{
+#ifdef _MSC_BUILD
+   U32 al = a&UINT_MAX, ah = a>>32;
+   U32 bl = b&UINT_MAX, bh = b>>32;
+   u128 res{static_cast<U64>(al)*bh, 0};
+   res += static_cast<U64>(ah)*bl;
+   res <<= 32;
+   res += static_cast<U64>(al)*bl;
+   res.hi += static_cast<U64>(ah)*bh;
+   return res;
+#else
+   return static_cast<u128>(a)*b;
+#endif
+}
+#ifdef _MSC_BUILD
+constexpr u128 &u128::operator*=(u128 const &rhs) noexcept{
+   u128 res = c_mul128(lo, rhs.lo);
+   res.hi += lo*rhs.hi + hi*rhs.lo;
+   return *this = res;
+}
+constexpr i128 &i128::operator*=(i128 const &rhs) noexcept{
+   u128 res = c_mul128(lo, rhs.lo);
+   res.hi += lo*rhs.hi + hi*rhs.lo;
+   return *this = static_cast<i128>(res);
+}
+constexpr u128 operator*(u128 lhs, u128 const &rhs) noexcept{
+   return lhs *= rhs;
+}
+constexpr i128 operator*(i128 lhs, i128 const &rhs) noexcept{
+   return lhs *= rhs;
+}
 #endif
 
 namespace impl{
@@ -258,6 +297,15 @@ constexpr u128 &u128_mul_eq_base(u128 &self, int base) noexcept{
       self.lo *= 10;
       self.hi = 10*self.hi + carry;
    }
+#else
+   self *= base;
+#endif
+   return self;
+}
+constexpr i128 &i128_mul_eq_base(i128 &self, int base) noexcept{
+#ifdef _MSC_BUILD
+   u128 uself = static_cast<u128>(self);
+   self = static_cast<i128>(u128_mul_eq_base(uself, base));
 #else
    self *= base;
 #endif
@@ -295,7 +343,7 @@ constexpr T operator""_##T(char const *s) noexcept{\
       if(*s == '\''){\
          continue;\
       }\
-      impl::u128_mul_eq_base(*reinterpret_cast<u128*>(&res), base) += char_to_digit(*s);\
+      impl::T##_mul_eq_base(res, base) += char_to_digit(*s);\
    }\
    return res;\
 }
@@ -303,12 +351,8 @@ DEF_LITERAL(u128)
 DEF_LITERAL(i128)
 #undef DEF_LITERAL
 
-struct u64div_t{
-   U64 quot, rem;
-};
-
-inline u64div_t u64_mul_div(U64 a, U64 b, U64 m){
-   u64div_t res;
+inline DivT<U64> u64_mul_div(U64 a, U64 b, U64 m){
+   DivT<U64> res;
 #ifdef _MSC_BUILD
    U64 h, l = _umul128(a, b, &h);
    res.quot = _udiv128(h, l, m, &res.rem);
@@ -319,12 +363,8 @@ inline u64div_t u64_mul_div(U64 a, U64 b, U64 m){
    return res;
 }
 
-struct i64div_t{
-   I64 quot, rem;
-};
-
-inline i64div_t i64_mul_div(I64 a, I64 b, I64 m){
-   i64div_t res;
+inline DivT<I64> i64_mul_div(I64 a, I64 b, I64 m){
+   DivT<I64> res;
 #ifdef _MSC_BUILD
    I64 h, l = _mul128(a, b, &h);
    res.quot = _div128(h, l, m, &res.rem);
@@ -595,7 +635,6 @@ inline wstring to_wstring(i128 value){
          res = L"0";
       }
    }else{
-      // As -i128::MIN = i128::MIN = 2^127, the negation is safe.
       value = static_cast<i128>(-*reinterpret_cast<u128*>(&value));
       while(value){
          U64 d;
@@ -611,6 +650,7 @@ inline wstring to_wstring(i128 value){
 
 #undef U64
 #undef I64
+#undef U32
 #undef U8
 
 #endif // INT128_HH
