@@ -1,0 +1,24 @@
+name: verify
+on: push
+jobs:
+  verify_on_windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify on Windows
+        shell: cmd
+        run: ${{ '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && unittests\win.bat' }}
+  verify_on_ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify on Ubuntu
+        shell: bash
+        run: bash unittests/ubuntu.sh
+  verify_on_macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify on Mac OS
+        shell: bash
+        run: bash unittests/macos.sh
