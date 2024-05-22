@@ -82,6 +82,9 @@
       return *this;\
    }\
    constexpr T &operator*=(T const &rhs) noexcept;\
+   constexpr DivT<T> div(T const &rhs) const noexcept;\
+   constexpr T &operator/=(T const &rhs) noexcept;\
+   constexpr T &operator%=(T const &rhs) noexcept;\
    constexpr T &operator&=(T const &rhs) noexcept{\
       lo &= rhs.lo;\
       hi &= rhs.hi;\
@@ -131,9 +134,9 @@ struct u128{
    explicit constexpr operator i128() const noexcept;
 };
 struct i128{
+   static constexpr U64 SIGN_BIT = 0x8000'0000'0000'0000;
    DEF_TYPE(i128)
    constexpr i128 &operator>>=(U8 shift) noexcept{
-      constexpr U64 sign_bit = 0x8000'0000'0000'0000;
       if(shift == 0){
          ; // null statement
       }else if(shift>>6 == 0){
@@ -141,11 +144,14 @@ struct i128{
          hi = static_cast<U64>(static_cast<I64>(hi)>>shift);
       }else if(shift>>6 == 1){
          lo = static_cast<U64>(static_cast<I64>(hi)>>(shift&63));
-         hi = (hi&sign_bit)? -1: 0;
+         hi = neg()? -1: 0;
       }else{
-         lo = hi = (hi&sign_bit)? -1: 0;
+         lo = hi = neg()? -1: 0;
       }
       return *this;
+   }
+   constexpr bool neg() const noexcept{
+      return hi & SIGN_BIT;
    }
    explicit constexpr operator u128() const noexcept{
       return u128(lo, hi);
@@ -210,14 +216,13 @@ DEF_U128_CMP(>=)
 
 #define DEF_I128_CMP(OP)\
 constexpr bool operator OP(i128 const &lhs, i128 const &rhs) noexcept{\
-   constexpr U64 sign_bit = 0x8000'0000'0000'0000;\
-   if(lhs.hi & sign_bit){\
-      if((rhs.hi & sign_bit) == 0){\
+   if(lhs.neg()){\
+      if(!rhs.neg()){\
          return -1 OP 0;\
       }\
       return lhs.hi==rhs.hi? lhs.lo OP rhs.lo: lhs.hi OP rhs.hi;\
    }\
-   if(rhs.hi & sign_bit){\
+   if(rhs.neg()){\
       return 0 OP -1;\
    }\
    return lhs.hi==rhs.hi? lhs.lo OP rhs.lo: lhs.hi OP rhs.hi;\
@@ -235,7 +240,7 @@ using u128 = __uint128_t;
 using i128 = __int128_t;
 #endif
 
-constexpr u128 c_mul128(U64 a, U64 b) noexcept{
+constexpr u128 mul_u64_u64(U64 a, U64 b) noexcept{
 #ifdef _MSC_BUILD
    U32 al = a&UINT_MAX, ah = a>>32;
    U32 bl = b&UINT_MAX, bh = b>>32;
@@ -249,14 +254,15 @@ constexpr u128 c_mul128(U64 a, U64 b) noexcept{
    return static_cast<u128>(a)*b;
 #endif
 }
+
 #ifdef _MSC_BUILD
 constexpr u128 &u128::operator*=(u128 const &rhs) noexcept{
-   u128 res = c_mul128(lo, rhs.lo);
+   u128 res = mul_u64_u64(lo, rhs.lo);
    res.hi += lo*rhs.hi + hi*rhs.lo;
    return *this = res;
 }
 constexpr i128 &i128::operator*=(i128 const &rhs) noexcept{
-   u128 res = c_mul128(lo, rhs.lo);
+   u128 res = mul_u64_u64(lo, rhs.lo);
    res.hi += lo*rhs.hi + hi*rhs.lo;
    return *this = static_cast<i128>(res);
 }
@@ -267,6 +273,198 @@ constexpr i128 operator*(i128 lhs, i128 const &rhs) noexcept{
    return lhs *= rhs;
 }
 #endif
+
+#ifdef _MSC_BUILD
+namespace impl{
+#define SET_LOW_32BITS(SRC64, DEST32) (SRC64 = (SRC64 & static_cast<U64>(UINT_MAX)<<32) | static_cast<U32>(DEST32))
+#define SET_HIGH_32BITS(SRC64, DEST32) (SRC64 = (SRC64 & UINT_MAX) | (static_cast<U64>(DEST32) << 32))
+constexpr U32 diveq_u128_u32(u128 &self, U32 rhs) noexcept{
+   U64 rem = self.hi>>32;
+   SET_HIGH_32BITS(self.hi, rem/rhs);
+   rem = (rem%rhs)<<32 | (self.hi&UINT_MAX);
+   SET_LOW_32BITS(self.hi, rem/rhs);
+   rem = (rem%rhs)<<32 | (self.lo>>32);
+   SET_HIGH_32BITS(self.lo, rem/rhs);
+   rem = (rem%rhs)<<32 | (self.lo&UINT_MAX);
+   SET_LOW_32BITS(self.lo, rem/rhs);
+   rem %= rhs;
+   return static_cast<U32>(rem);
+}
+constexpr u128 mul_u64_u32(U64 a, U32 b) noexcept{
+   u128 res{0, 0};
+   U64 temp = (a&UINT_MAX)*b;
+   SET_LOW_32BITS(res.lo, temp);
+   temp = (a>>32)*b+(temp>>32);
+   SET_HIGH_32BITS(res.lo, temp);
+   res.hi = temp>>32;
+   return res;
+}
+constexpr U64 diveq_u128_u64(u128 &self, U64 rhs) noexcept{
+   if(rhs>>32 == 0){
+      return diveq_u128_u32(self, static_cast<U32>(rhs));
+   }
+   U32 norm = static_cast<U32>((1ull<<32)/((rhs>>32)+1));
+   rhs *= norm;
+   U64 temp = (self.lo&UINT_MAX)*norm;
+   SET_LOW_32BITS(self.lo, temp);
+   temp = (self.lo>>32)*norm + (temp>>32);
+   SET_HIGH_32BITS(self.lo, temp);
+   temp = (self.hi&UINT_MAX)*norm + (temp>>32);
+   SET_LOW_32BITS(self.hi, temp);
+   temp = (self.hi>>32)*norm + (temp>>32);
+   SET_HIGH_32BITS(self.hi, temp);
+   u128 rem{self.hi, temp>>32};
+   auto dwim = [&rem, rhs](){
+      U32 q = static_cast<U32>((rem.hi<<32|(rem.lo>>32))/((rhs>>32)+1));
+      rem -= mul_u64_u32(rhs, q);
+      if(rem >= rhs){
+         rem -= rhs;
+         if(rem >= rhs){
+            rem -= rhs;
+            q += 2;
+         }else{
+            ++q;
+         }
+      }
+      return q;
+   };
+   self.hi = dwim();
+   rem = (rem<<32)|(self.lo>>32);
+   SET_HIGH_32BITS(self.lo, dwim());
+   rem = (rem<<32)|(self.lo&UINT_MAX);
+   SET_LOW_32BITS(self.lo, dwim());
+   return rem.lo / norm;
+}
+constexpr u128 mul_u128_u32(u128 lhs, U32 rhs) noexcept{
+   U64 temp = (lhs.lo&UINT_MAX)*rhs;
+   SET_LOW_32BITS(lhs.lo, temp);
+   temp = (lhs.lo>>32)*rhs+(temp>>32);
+   SET_HIGH_32BITS(lhs.lo, temp);
+   temp = (lhs.hi&UINT_MAX)*rhs+(temp>>32);
+   SET_LOW_32BITS(lhs.hi, temp);
+   temp = (lhs.hi>>32)*rhs+(temp>>32);
+   SET_HIGH_32BITS(lhs.hi, temp);
+   return lhs;
+}
+constexpr u128 diveq_u128_u128(u128 &self, u128 const &rhs) noexcept{
+   if(rhs.hi == 0){
+      return diveq_u128_u64(self, rhs.lo);
+   }
+   if(rhs.hi >> 32){
+      if(self.hi <= rhs.hi){
+         u128 res = self;
+         if(res >= rhs){
+            res -= rhs;
+            self = 1;
+         }else{
+            self = 0;
+         }
+         return res;
+      }
+      U32 q = static_cast<U32>(self.hi/(rhs.hi+1));
+      u128 res = self-mul_u128_u32(rhs, q);
+      if(res >= rhs){
+         res -= rhs;
+         ++q;
+      }
+      self = q;
+      return res;
+   }
+   U32 norm = static_cast<U32>((1ull<<32)/((rhs.hi&UINT_MAX)+1));
+   U64 temp = (self.lo&UINT_MAX)*norm;
+   SET_LOW_32BITS(self.lo, temp);
+   temp = (self.lo>>32)*norm + (temp>>32);
+   SET_HIGH_32BITS(self.lo, temp);
+   temp = (self.hi&UINT_MAX)*norm + (temp>>32);
+   SET_LOW_32BITS(self.hi, temp);
+   temp = (self.hi>>32)*norm + (temp>>32);
+   u128 rem{(self.hi&UINT_MAX)<<32|(self.lo>>32), temp};
+   self.hi = 0;
+   u128 r2 = mul_u128_u32(rhs, norm);
+   auto dwim = [&rem, &r2](){
+      U32 q = static_cast<U32>(rem.hi/(r2.hi+1));
+      rem -= mul_u128_u32(r2, q);
+      if(rem >= r2){
+         rem -= r2;
+         if(rem >= r2){
+            rem -= r2;
+            q += 2;
+         }else{
+            ++q;
+         }
+      }
+      return q;
+   };
+   SET_HIGH_32BITS(self.lo, dwim());
+   rem = (rem<<32)|(self.lo&UINT_MAX);
+   SET_LOW_32BITS(self.lo, dwim());
+   diveq_u128_u32(rem, norm);
+   return rem;
+}
+#undef SET_HIGH_32BITS
+#undef SET_LOW_32BITS
+} // namespace impl
+
+constexpr DivT<u128> u128::div(u128 const &rhs) const noexcept{
+   u128 q = *this, r = impl::diveq_u128_u128(q, rhs);
+   return {q, r};
+}
+constexpr u128 &u128::operator/=(u128 const &rhs) noexcept{
+   impl::diveq_u128_u128(*this, rhs);
+   return *this;
+}
+constexpr u128 &u128::operator%=(u128 const &rhs) noexcept{
+   return *this = impl::diveq_u128_u128(*this, rhs);
+}
+constexpr u128 operator/(u128 lhs, u128 const &rhs) noexcept{
+   return lhs /= rhs;
+}
+constexpr u128 operator%(u128 lhs, u128 const &rhs) noexcept{
+   return lhs %= rhs;
+}
+
+constexpr DivT<i128> i128::div(i128 const &rhs) const noexcept{
+   u128 a = static_cast<u128>(*this), b = static_cast<u128>(rhs);
+   if(neg()){
+      a.into_opp();
+   }
+   if(rhs.neg()){
+      b.into_opp();
+   }
+   auto [q, r] = a.div(b);
+   if(neg()){
+      if(!rhs.neg()){
+         q.into_opp();
+      }
+      r.into_opp();
+   }else if(rhs.neg()){
+      q.into_opp();
+   }
+   return {static_cast<i128>(q), static_cast<i128>(r)};
+}
+constexpr i128 &i128::operator/=(i128 const &rhs) noexcept{
+   return *this = div(rhs).quot;
+}
+constexpr i128 &i128::operator%=(i128 const &rhs) noexcept{
+   return *this = div(rhs).rem;
+}
+constexpr i128 operator/(i128 lhs, i128 const &rhs) noexcept{
+   return lhs /= rhs;
+}
+constexpr i128 operator%(i128 lhs, i128 const &rhs) noexcept{
+   return lhs %= rhs;
+}
+#endif // _MSC_BUILD
+
+constexpr DivT<U64> c_u64_mul_div(U64 a, U64 b, U64 m) noexcept{
+   u128 c = mul_u64_u64(a, b);
+#ifdef _MSC_BUILD
+   U64 r = impl::diveq_u128_u64(c, m);
+#else
+   U64 r = c%m; c /= m;
+#endif
+   return {static_cast<U64>(c), r};
+}
 
 namespace impl{
 constexpr int u64_mul_10_carry(U64 a) noexcept{
